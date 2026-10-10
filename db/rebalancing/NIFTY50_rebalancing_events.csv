@@ -1,0 +1,31 @@
+date,event_type,impact,notes
+2016-09-30,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2017-03-31,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2017-09-29,addition,positive,"Bajaj Finance, Hindustan Petroleum Corp, UPL added"
+2017-09-29,deletion,negative,"ACC, Bank of Baroda, Tata Power, Tata Motors DVR removed"
+2018-03-30,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2018-09-28,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2019-03-29,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2019-09-30,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2020-03-19,deletion,negative,Yes Bank removed off-cycle (accelerated from originally scheduled March 27) following RBI gazette notification on Reconstruction Scheme; replacement company not confirmed by sources found
+2020-03-31,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2020-09-30,addition,positive,"SBI Life Insurance and Divi's Laboratories added (date approximated to standard semi-annual effective date; exact date not independently confirmed, sourced from a Jan 2021 article referencing 'the last rejig')"
+2020-09-30,deletion,negative,Bharti Infratel and ZEE Entertainment Enterprises removed (date approximated as above)
+2021-03-31,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2021-09-30,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2022-03-31,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2022-09-30,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2023-03-31,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2023-07-01,deletion,negative,HDFC Ltd ceased to exist as independent entity upon merger with HDFC Bank
+2023-07-01,addition,positive,LTIMindtree added off-cycle as replacement for HDFC Ltd merger
+2023-09-29,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2024-03-29,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2024-09-30,deletion,negative,LTIMindtree and Divi's Laboratories removed
+2024-09-30,addition,positive,Trent Ltd and Bharat Electronics (BEL) added
+2025-03-28,deletion,negative,BPCL and Britannia Industries removed
+2025-03-28,addition,positive,Zomato (Eternal) and Jio Financial Services added
+2025-03-31,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
+2025-09-30,deletion,negative,Hero MotoCorp and IndusInd Bank removed
+2025-09-30,addition,positive,InterGlobe Aviation (IndiGo) and Max Healthcare Institute added
+2026-03-30,none,neutral,Nifty 50 composition unchanged in March 2026 review
+2026-03-31,scheduled_review,unknown,Approximate semi-annual reconstitution effective date (last weekday of month; NOT adjusted for NSE market holidays). Specific constituent changes not confirmed via search -- verify against NSE/niftyindices.com circular for this date.
