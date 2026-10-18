@@ -49,10 +49,11 @@ def gemini_client():
     return _clients["gemini"]
 
 
-def chroma_collection():
-    if "chroma" not in _clients:
-        _clients["chroma"] = explain_anomalies.get_chroma_collection()
-    return _clients["chroma"]
+def context_index():
+    # Loading the vector store into memory takes a few seconds; do it once.
+    if "index" not in _clients:
+        _clients["index"] = explain_anomalies.get_context_index()
+    return _clients["index"]
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -137,8 +138,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         try:
             with _explain_lock:
                 entry = explain_anomalies.explain_date(
-                    date, sector, client=gemini_client(), collection=chroma_collection(),
-                    force=bool(body.get("force")))
+                    date, sector, force=bool(body.get("force")),
+                    get_client=gemini_client, get_index=context_index)
         except ValueError as exc:            # not a trading day / not flagged
             return self.send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
         except (RuntimeError, FileNotFoundError) as exc:   # missing key / vector store

@@ -36,6 +36,7 @@ def format_explanation(entry: dict) -> dict:
         "explanation": entry.get("explanation", ""),
         "context": context,
         "urls": entry.get("context_urls", []),
+        "notes": entry.get("retrieval_notes", []),
     }
 
 

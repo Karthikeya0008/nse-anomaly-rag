@@ -1,17 +1,27 @@
 """
-Anomaly Explanation Pipeline (RAG + LLM) -- Balanced Retrieval Version
+Anomaly Explanation Pipeline (RAG + LLM)
+
+For each flagged day: retrieve context with the anomaly-aware pipeline in
+retrieval.py, ask Gemini for a cause grounded only in that context, and save
+the result to db/explanations/<SECTOR>_explanations.json.
+
+Usage:
+    python explain_anomalies.py                     # batch: days since MIN_ANOMALY_DATE
+    python explain_anomalies.py --date 2024-06-04   # one day (any year)
 """
 
 import argparse
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import chromadb
 import pandas as pd
 from google import genai
+
+from retrieval import ContextIndex, retrieve_context
 
 
 # ============================================================================
@@ -32,13 +42,8 @@ EXPLANATIONS_DIR = PROJECT_ROOT / "db" / "explanations"
 COLLECTION_NAME = "market_context"
 GEMINI_MODEL = "gemini-3.6-flash"
 
-DATE_WINDOW_DAYS = 5
-
-CHUNKS_PER_SOURCE = {
-    "sebi": 2,
-    "business_standard": 2,
-    "wikipedia": 2,
-}
+SOURCES = ("business_standard", "sebi", "wikipedia")
+CHUNK_CHARS_IN_PROMPT = 1200
 
 DELAY_BETWEEN_CALLS = 7
 MAX_ANOMALIES_PER_RUN = 30
@@ -131,79 +136,25 @@ def safe_float(value, default=0.0):
 
 
 # ============================================================================
-# BALANCED RETRIEVAL
+# RETRIEVAL (see retrieval.py for the pipeline)
 # ============================================================================
 
-def _query_source(collection, query_text: str, source: str, k: int, date_range):
-    if collection.count() == 0:
-        return []
-
-    where_conditions = [{"source": {"$eq": source}}]
-    if date_range is not None:
-        start, end = date_range
-        where_conditions.append({"date_int": {"$gte": start}})
-        where_conditions.append({"date_int": {"$lte": end}})
-
-    where = {"$and": where_conditions} if len(where_conditions) > 1 else where_conditions[0]
-
-    try:
-        results = collection.query(query_texts=[query_text], n_results=k, where=where)
-    except Exception:
-        return []
-
-    documents = results.get("documents", [[]])
-    if not documents or not documents[0]:
-        return []
-
-    metadatas = results.get("metadatas", [[]])[0] or []
-
-    chunks = []
-    for doc, meta in zip(documents[0], metadatas):
-        meta = meta or {}
-        chunks.append({
-            "text": doc,
-            "source": meta.get("source", source),
-            "date": meta.get("date", "unknown"),
-            "title": meta.get("title", "untitled"),
-            "url": meta.get("url", ""),
-        })
-    return chunks
-
-
-def retrieve_balanced_context(collection, anomaly_date: str, sector: str):
-    anomaly_date = normalize_date(anomaly_date)
-    dt = datetime.strptime(anomaly_date, "%Y-%m-%d")
-    start = int((dt - timedelta(days=DATE_WINDOW_DAYS)).strftime("%Y%m%d"))
-    end = int((dt + timedelta(days=DATE_WINDOW_DAYS)).strftime("%Y%m%d"))
-
-    results = {}
-    event_query = f"{sector} index price movement {anomaly_date} market conditions"
-
-    results["sebi"] = _query_source(collection, event_query, "sebi", CHUNKS_PER_SOURCE["sebi"], (start, end))
-    results["business_standard"] = _query_source(
-        collection, event_query, "business_standard", CHUNKS_PER_SOURCE["business_standard"], (start, end)
-    )
-
-    background_query = f"{sector} Indian stock market crash crisis regulation history"
-    results["wikipedia"] = _query_source(
-        collection, background_query, "wikipedia", CHUNKS_PER_SOURCE["wikipedia"], None
-    )
-
-    return results
+def get_context_index(collection=None) -> ContextIndex:
+    """Load the vector store's chunks and embeddings into memory for retrieval."""
+    return ContextIndex.from_collection(collection or get_chroma_collection())
 
 
 # ============================================================================
 # PROMPT
 # ============================================================================
 
-def _format_source_block(chunks: list, label: str, is_point_in_time: bool) -> str:
+def _format_source_block(chunks: list, label: str, framing: str) -> str:
     if not chunks:
-        return f"### {label}\n(No relevant {label.lower()} found for this anomaly.)"
+        return f"### {label}\n(Nothing relevant enough was found for this anomaly.)"
 
-    framing = "point-in-time" if is_point_in_time else "general background (not necessarily from this specific date)"
     lines = [f"### {label}  [{framing}]"]
     for c in chunks:
-        lines.append(f"\n[{c['date']} | {c['title']}]\n{c['text'][:800]}")
+        lines.append(f"\n[{c['date']} | {c['title']}]\n{c['text'][:CHUNK_CHARS_IN_PROMPT]}")
     return "\n".join(lines)
 
 
@@ -243,9 +194,14 @@ def build_prompt(anomaly_row: pd.Series, sector: str, context_by_source: dict) -
     shock_votes = anomaly_row.get("shock_votes", "N/A")
     regime_votes = anomaly_row.get("regime_votes", "N/A")
 
-    regulatory_block = _format_source_block(context_by_source.get("sebi", []), "Regulatory Filings (SEBI)", True)
-    news_block = _format_source_block(context_by_source.get("business_standard", []), "News Coverage (Business Standard)", True)
-    background_block = _format_source_block(context_by_source.get("wikipedia", []), "Background Reference (Wikipedia)", False)
+    news_block = _format_source_block(context_by_source.get("business_standard", []),
+                                      "News Coverage (Business Standard)", "point-in-time")
+    regulatory_block = _format_source_block(context_by_source.get("sebi", []),
+                                            "Regulatory Filings (SEBI)", "point-in-time")
+    background_block = _format_source_block(context_by_source.get("wikipedia", []),
+                                            "Background Reference (Wikipedia)",
+                                            "event article dated near the anomaly; not a report of the day itself")
+    retrieval_notes = "\n".join(f"- {n}" for n in context_by_source.get("notes", [])) or "- (none)"
 
     return f"""You are analyzing an anomalous trading day on the {sector} index, flagged by an ensemble of unsupervised anomaly detectors (Isolation Forest, One-Class SVM, LOF, Elliptic Envelope, KNN distance).
 
@@ -261,16 +217,19 @@ ANOMALY DETAILS
 
 RETRIEVED CONTEXT
 
-{regulatory_block}
-
 {news_block}
 
+{regulatory_block}
+
 {background_block}
+
+RETRIEVAL NOTES
+{retrieval_notes}
 
 INSTRUCTIONS
 For a REGIME anomaly, explain what drove the period as a whole rather than this single day's move.
 
-Regulatory Filings and News Coverage above are dated near the anomaly and are your primary evidence. Background Reference is general knowledge that may or may not relate to this specific date -- use it only for context, never as evidence of what happened on {anomaly_date} specifically.
+News Coverage and Regulatory Filings above are dated near the anomaly and are your primary evidence. Background Reference articles describe events dated near the anomaly but do not report the market on {anomaly_date} itself -- use them as context for a plausible cause, and say that the link is inferred. If nothing relevant was retrieved, say so plainly and give Low confidence rather than drawing on general market knowledge.
 
 Respond in exactly this structure:
 
@@ -289,15 +248,15 @@ Do not invent news events, regulatory actions, or causes not present in the retr
 # EXPLANATION GENERATION
 # ============================================================================
 
-def explain_anomaly(client, collection, anomaly_row: pd.Series, sector: str) -> dict:
+def explain_anomaly(client, index: ContextIndex, anomaly_row: pd.Series, sector: str) -> dict:
     anomaly_date = normalize_date(anomaly_row["date"])
-    context_by_source = retrieve_balanced_context(collection, anomaly_date, sector)
+    context_by_source = retrieve_context(index, anomaly_row)
     prompt = build_prompt(anomaly_row, sector, context_by_source)
 
     response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     explanation = getattr(response, "text", None) or "Gemini returned no explanation text."
 
-    all_chunks = [c for chunks in context_by_source.values() for c in chunks]
+    all_chunks = [c for src in SOURCES for c in context_by_source.get(src, [])]
 
     return {
         "date": anomaly_date,
@@ -305,12 +264,14 @@ def explain_anomaly(client, collection, anomaly_row: pd.Series, sector: str) -> 
         "anomaly_type": anomaly_row.get("anomaly_type", ""),
         "log_return": safe_float(anomaly_row.get("log_return", 0.0)),
         "return_zscore": safe_float(anomaly_row.get("return_zscore", 0.0)),
-        "chunks_per_source": {src: len(chunks) for src, chunks in context_by_source.items()},
+        "chunks_per_source": {src: len(context_by_source.get(src, [])) for src in SOURCES},
         "context_titles": [c["title"] for c in all_chunks],
         "context_urls": [c["url"] for c in all_chunks if c.get("url")],
         # Same chunks with source/date/url kept together, for the dashboard.
-        "context": [{k: c.get(k, "") for k in ("source", "date", "title", "url")}
+        "context": [{k: c.get(k, "") for k in ("source", "date", "title", "url", "similarity")}
                     for c in all_chunks],
+        "retrieval_queries": context_by_source.get("queries", []),
+        "retrieval_notes": context_by_source.get("notes", []),
         "explanation": explanation.strip(),
     }
 
@@ -381,13 +342,16 @@ def save_explanations(existing: dict, sector: str = SECTOR) -> Path:
 # SINGLE DAY (used by the dashboard server and --date)
 # ============================================================================
 
-def explain_date(date: str, sector: str = SECTOR, client=None, collection=None,
-                 force: bool = False) -> dict:
+def explain_date(date: str, sector: str = SECTOR, force: bool = False,
+                 get_client=get_gemini_client, get_index=get_context_index) -> dict:
     """Explain one flagged day and save it alongside the other explanations.
 
     Unlike run(), this ignores MIN_ANOMALY_DATE and does not collapse regime
     episodes: whatever flagged day is asked for gets explained. Returns the
     saved entry (the existing one, unless force=True).
+
+    get_client / get_index are only called once the date is known to be a
+    flagged day that needs explaining (the server passes cached versions).
     """
     date = normalize_date(date)
     df = load_final_anomalies(sector)
@@ -401,9 +365,7 @@ def explain_date(date: str, sector: str = SECTOR, client=None, collection=None,
     if date in existing and not force:
         return existing[date]
 
-    result = explain_anomaly(client or get_gemini_client(),
-                             collection or get_chroma_collection(),
-                             rows.iloc[0], sector)
+    result = explain_anomaly(get_client(), get_index(), rows.iloc[0], sector)
     existing = load_explanations(sector)  # re-read: another run may have saved meanwhile
     existing[date] = result
     save_explanations(existing, sector)
@@ -416,7 +378,7 @@ def explain_date(date: str, sector: str = SECTOR, client=None, collection=None,
 
 def run():
     print("=" * 70)
-    print("ANOMALY EXPLANATION PIPELINE (balanced retrieval)")
+    print("ANOMALY EXPLANATION PIPELINE (anomaly-aware retrieval)")
     print("=" * 70)
     print(f"Sector:       {SECTOR}")
     print(f"Gemini model: {GEMINI_MODEL}")
@@ -427,8 +389,8 @@ def run():
     if not VECTORSTORE_DIR.exists():
         raise FileNotFoundError(f"Vectorstore directory does not exist:\n{VECTORSTORE_DIR}\n\nRun ingest_all_to_chroma.py first.")
 
-    collection = get_chroma_collection()
     client = get_gemini_client()
+    index = get_context_index()
 
     df = load_final_anomalies(SECTOR)
     print(f"Columns found in CSV: {list(df.columns)}\n")
@@ -466,7 +428,7 @@ def run():
         print(f"[{processed_this_run + 1}/{MAX_ANOMALIES_PER_RUN}] Processing {anomaly_date}...")
 
         try:
-            result = explain_anomaly(client, collection, row, SECTOR)
+            result = explain_anomaly(client, index, row, SECTOR)
             existing[anomaly_date] = result
             processed_this_run += 1
 

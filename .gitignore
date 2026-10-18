@@ -3,4 +3,9 @@ backend/.venv/
 __pycache__/
 *.pyc
 .env
+
+# Rebuilt locally by backend/src/rag/ingestion/ingest_all_to_chroma.py (~360 MB)
 db/vectorstore/
+
+# Scraper debugging dumps
+db/raw_text/*/_debug_html/

@@ -1,4 +1,0 @@
-//venv activate text
-(Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned) ; (& e:\nse-anomaly-rag\backend\.venv\Scripts\Activate.ps1)
-//API key text
-$env:GEMINI_API_KEY="your_api_key_here" -> Terminal window

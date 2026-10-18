@@ -58,57 +58,69 @@ EPISODE_GAP = 5      # flagged days at most this many trading days apart form on
 
 # Every scorer returns an "anomaly score" where HIGHER = MORE ANOMALOUS, so all
 # models can be ranked and compared on the same footing.
+#
+# Each scorer fits on X. By default it scores those same days (how the
+# production pipeline runs: one fit over the full history). Given X_new, it
+# scores those days instead without refitting -- used by validate_models.py
+# for out-of-sample tests. `seed` only matters for the randomised models.
 
-def score_isolation_forest(X):
+def score_isolation_forest(X, X_new=None, seed=42):
     model = IsolationForest(n_estimators=200, contamination=FINAL_CONTAMINATION,
-                            random_state=42).fit(X)
-    return model, -model.score_samples(X)
+                            random_state=seed).fit(X)
+    return model, -model.score_samples(X if X_new is None else X_new)
 
 
-def score_one_class_svm(X):
+def score_one_class_svm(X, X_new=None, seed=42):
     # nu ~ upper bound on the fraction of outliers; RBF kernel learns a smooth
     # boundary around the "normal" cloud of days.
     model = make_pipeline(RobustScaler(),
                           OneClassSVM(kernel="rbf", nu=FINAL_CONTAMINATION, gamma="scale"))
     model.fit(X)
-    return model, -model.score_samples(X)
+    return model, -model.score_samples(X if X_new is None else X_new)
 
 
-def score_lof(X):
+def score_lof(X, X_new=None, seed=42):
     # Compares each day's local density with that of its neighbours.
     scaler = RobustScaler().fit(X)
-    model = LocalOutlierFactor(n_neighbors=LOF_NEIGHBORS, contamination=FINAL_CONTAMINATION)
-    model.fit(scaler.transform(X))
-    return make_pipeline(scaler, model), -model.negative_outlier_factor_
+    if X_new is None:
+        model = LocalOutlierFactor(n_neighbors=LOF_NEIGHBORS, contamination=FINAL_CONTAMINATION)
+        model.fit(scaler.transform(X))
+        return make_pipeline(scaler, model), -model.negative_outlier_factor_
+    # Scoring unseen days needs LOF's novelty mode.
+    model = LocalOutlierFactor(n_neighbors=LOF_NEIGHBORS, contamination=FINAL_CONTAMINATION,
+                               novelty=True).fit(scaler.transform(X))
+    return make_pipeline(scaler, model), -model.score_samples(scaler.transform(X_new))
 
 
-def score_elliptic_envelope(X):
+def score_elliptic_envelope(X, X_new=None, seed=42):
     # Robust (MCD) Mahalanobis distance: how far a day is from the bulk of days,
     # taking feature correlations into account.
     model = make_pipeline(RobustScaler(),
                           EllipticEnvelope(contamination=FINAL_CONTAMINATION,
-                                           support_fraction=0.9, random_state=42))
+                                           support_fraction=0.9, random_state=seed))
     model.fit(X)
-    return model, -model.score_samples(X)
+    return model, -model.score_samples(X if X_new is None else X_new)
 
 
-def score_pca_reconstruction(X):
+def score_pca_reconstruction(X, X_new=None, seed=42):
     # Days that don't fit the main correlation patterns between features are
     # reconstructed badly from the top principal components.
     scaler = RobustScaler().fit(X)
-    Xs = scaler.transform(X)
-    pca = PCA(n_components=PCA_VARIANCE, random_state=42).fit(Xs)
+    pca = PCA(n_components=PCA_VARIANCE, random_state=42).fit(scaler.transform(X))
+    Xs = scaler.transform(X if X_new is None else X_new)
     recon = pca.inverse_transform(pca.transform(Xs))
     return make_pipeline(scaler, pca), ((Xs - recon) ** 2).sum(axis=1)
 
 
-def score_knn_distance(X):
+def score_knn_distance(X, X_new=None, seed=42):
     # Mean distance to the k nearest other days: isolated days are far from everyone.
     scaler = RobustScaler().fit(X)
-    Xs = scaler.transform(X)
-    nn = NearestNeighbors(n_neighbors=KNN_NEIGHBORS + 1).fit(Xs)
-    dist, _ = nn.kneighbors(Xs)
-    return make_pipeline(scaler, nn), dist[:, 1:].mean(axis=1)  # column 0 is the day itself
+    nn = NearestNeighbors(n_neighbors=KNN_NEIGHBORS + 1).fit(scaler.transform(X))
+    if X_new is None:
+        dist, _ = nn.kneighbors(scaler.transform(X))
+        return make_pipeline(scaler, nn), dist[:, 1:].mean(axis=1)  # column 0 is the day itself
+    dist, _ = nn.kneighbors(scaler.transform(X_new), n_neighbors=KNN_NEIGHBORS)
+    return make_pipeline(scaler, nn), dist.mean(axis=1)
 
 
 MODELS = {

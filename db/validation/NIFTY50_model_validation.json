@@ -1,0 +1,351 @@
+{
+  "baseline": {
+    "shock": {
+      "flagged": 121,
+      "events": 13,
+      "caught": 13,
+      "caught_pm1": 13,
+      "p_value": 6.534052262387005e-18
+    },
+    "regime": {
+      "flagged": 121,
+      "events": 13,
+      "caught": 4,
+      "caught_pm1": 4,
+      "p_value": 0.0030009213601249803
+    },
+    "all": {
+      "flagged": 121,
+      "events": 13,
+      "caught": 11,
+      "caught_pm1": 11,
+      "p_value": 2.2597348687584236e-13
+    }
+  },
+  "sensitivity": {
+    "shock": [
+      {
+        "rate": 0.01,
+        "flagged": 25,
+        "caught": 8,
+        "caught_pm1": 8
+      },
+      {
+        "rate": 0.02,
+        "flagged": 49,
+        "caught": 11,
+        "caught_pm1": 11
+      },
+      {
+        "rate": 0.03,
+        "flagged": 73,
+        "caught": 12,
+        "caught_pm1": 12
+      },
+      {
+        "rate": 0.05,
+        "flagged": 121,
+        "caught": 13,
+        "caught_pm1": 13
+      },
+      {
+        "rate": 0.075,
+        "flagged": 182,
+        "caught": 13,
+        "caught_pm1": 13
+      },
+      {
+        "rate": 0.1,
+        "flagged": 242,
+        "caught": 13,
+        "caught_pm1": 13
+      }
+    ],
+    "regime": [
+      {
+        "rate": 0.01,
+        "flagged": 25,
+        "caught": 3,
+        "caught_pm1": 3
+      },
+      {
+        "rate": 0.02,
+        "flagged": 50,
+        "caught": 3,
+        "caught_pm1": 3
+      },
+      {
+        "rate": 0.03,
+        "flagged": 73,
+        "caught": 3,
+        "caught_pm1": 3
+      },
+      {
+        "rate": 0.05,
+        "flagged": 121,
+        "caught": 4,
+        "caught_pm1": 4
+      },
+      {
+        "rate": 0.075,
+        "flagged": 182,
+        "caught": 6,
+        "caught_pm1": 7
+      },
+      {
+        "rate": 0.1,
+        "flagged": 242,
+        "caught": 6,
+        "caught_pm1": 7
+      }
+    ]
+  },
+  "walk_forward": {
+    "shock": {
+      "test_years": [
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "events_tested": 11,
+      "caught_oos": 11,
+      "caught_in_sample": 11,
+      "spearman": 0.9661704469432045,
+      "jaccard": 0.6690140845070423,
+      "oos_flag_rate": 0.06861702127659575,
+      "share_of_oos_flags_also_in_sample": 0.7364341085271318,
+      "share_of_in_sample_flags_found_oos": 0.8796296296296297
+    },
+    "regime": {
+      "test_years": [
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "events_tested": 11,
+      "caught_oos": 6,
+      "caught_in_sample": 4,
+      "spearman": 0.8487317656767936,
+      "jaccard": 0.3333333333333333,
+      "oos_flag_rate": 0.18351063829787234,
+      "share_of_oos_flags_also_in_sample": 0.336231884057971,
+      "share_of_in_sample_flags_found_oos": 0.9747899159663865
+    }
+  },
+  "stability": {
+    "shock": {
+      "seed_jaccard": {
+        "ensemble": 0.9659443955751034,
+        "isoforest": 0.8997242328544734,
+        "elliptic": 1.0
+      },
+      "subsample_jaccard": {
+        "isoforest": 0.9089157771942318,
+        "ocsvm": 0.8399370106572084,
+        "lof": 0.8592448191362194,
+        "elliptic": 0.9805261869445772,
+        "knn": 0.8977610087839034,
+        "ensemble": 0.9084801927629822
+      }
+    },
+    "regime": {
+      "seed_jaccard": {
+        "ensemble": 0.9869119019059044,
+        "isoforest": 0.9047488384023487,
+        "elliptic": 1.0
+      },
+      "subsample_jaccard": {
+        "isoforest": 0.9111618188031974,
+        "ocsvm": 0.8638906205330887,
+        "lof": 0.8158619511263104,
+        "elliptic": 0.9684287781661529,
+        "knn": 0.8153796086072681,
+        "ensemble": 0.9178951394192107
+      }
+    }
+  },
+  "shock_injection": [
+    {
+      "sigma": 2,
+      "detected": 0.6333333333333333,
+      "control": 0.0,
+      "per_model": {
+        "isoforest": 0.7000000000000001,
+        "ocsvm": 0.5333333333333333,
+        "lof": 0.6000000000000001,
+        "elliptic": 0.3333333333333333,
+        "knn": 0.4333333333333333
+      }
+    },
+    {
+      "sigma": 3,
+      "detected": 0.9333333333333332,
+      "control": 0.0,
+      "per_model": {
+        "isoforest": 0.9333333333333332,
+        "ocsvm": 0.9,
+        "lof": 0.7666666666666666,
+        "elliptic": 0.5,
+        "knn": 0.8000000000000002
+      }
+    },
+    {
+      "sigma": 4,
+      "detected": 1.0,
+      "control": 0.0,
+      "per_model": {
+        "isoforest": 1.0,
+        "ocsvm": 0.9333333333333332,
+        "lof": 0.9666666666666667,
+        "elliptic": 0.7333333333333334,
+        "knn": 0.9666666666666667
+      }
+    },
+    {
+      "sigma": 5,
+      "detected": 1.0,
+      "control": 0.0,
+      "per_model": {
+        "isoforest": 1.0,
+        "ocsvm": 1.0,
+        "lof": 1.0,
+        "elliptic": 0.9,
+        "knn": 1.0
+      }
+    },
+    {
+      "sigma": 6,
+      "detected": 1.0,
+      "control": 0.0,
+      "per_model": {
+        "isoforest": 1.0,
+        "ocsvm": 1.0,
+        "lof": 1.0,
+        "elliptic": 0.9666666666666667,
+        "knn": 1.0
+      }
+    }
+  ],
+  "regime_injection": [
+    {
+      "scenario": "volatility x2",
+      "detected": 0.38888888888888884,
+      "day_share": 0.05185185185185185,
+      "control": 0.0
+    },
+    {
+      "scenario": "volatility x3",
+      "detected": 0.5555555555555555,
+      "day_share": 0.1796296296296296,
+      "control": 0.0
+    },
+    {
+      "scenario": "volatility x4",
+      "detected": 0.7222222222222222,
+      "day_share": 0.21481481481481482,
+      "control": 0.0
+    },
+    {
+      "scenario": "drift 0.4%/day",
+      "detected": 0.5,
+      "day_share": 0.06481481481481481,
+      "control": 0.1111111111111111
+    },
+    {
+      "scenario": "drift 0.7%/day",
+      "detected": 0.6666666666666666,
+      "day_share": 0.11666666666666668,
+      "control": 0.0
+    },
+    {
+      "scenario": "drift 1.0%/day",
+      "detected": 0.8333333333333334,
+      "day_share": 0.1574074074074074,
+      "control": 0.0
+    }
+  ],
+  "separation": {
+    "shock": {
+      "|daily return|": {
+        "median_flagged": 0.0232033096529673,
+        "median_other": 0.0048862342043243,
+        "effect": 0.7950110996376876,
+        "p": 1.325906049702562e-49
+      },
+      "intraday range": {
+        "median_flagged": 0.0263732888080741,
+        "median_other": 0.0087238773545523,
+        "effect": 0.8716183883398037,
+        "p": 3.361313492270159e-59
+      },
+      "|opening gap|": {
+        "median_flagged": 0.0152970157510726,
+        "median_other": 0.00266364625812,
+        "effect": 0.7631045884499006,
+        "p": 7.263818035410092e-46
+      },
+      "volatility, next 5 days": {
+        "median_flagged": 0.012351744601401902,
+        "median_other": 0.0064717094223395825,
+        "effect": 0.5812527944845889,
+        "p": 1.9019539208737257e-27
+      },
+      "volatility, next 20 days": {
+        "median_flagged": 0.012584744128209441,
+        "median_other": 0.007271551039843574,
+        "effect": 0.6069353252249408,
+        "p": 9.686458973631529e-30
+      }
+    },
+    "regime": {
+      "|daily return|": {
+        "median_flagged": 0.0122171236055772,
+        "median_other": 0.004968171453735,
+        "effect": 0.4707001946484275,
+        "p": 1.1769210756303166e-18
+      },
+      "intraday range": {
+        "median_flagged": 0.0192665932274734,
+        "median_other": 0.0087320320700139,
+        "effect": 0.7210806765561979,
+        "p": 3.5802854421092417e-41
+      },
+      "|opening gap|": {
+        "median_flagged": 0.0076142956100095,
+        "median_other": 0.0026778248709742,
+        "effect": 0.5566261418954654,
+        "p": 2.4676825616413948e-25
+      },
+      "volatility, next 5 days": {
+        "median_flagged": 0.014576763245558734,
+        "median_other": 0.006448640812619957,
+        "effect": 0.6925562142125683,
+        "p": 3.9206762652834316e-38
+      },
+      "volatility, next 20 days": {
+        "median_flagged": 0.013412969305074483,
+        "median_other": 0.007232276984228825,
+        "effect": 0.7807975551417881,
+        "p": 6.714712213622539e-48
+      }
+    }
+  },
+  "agreement": {
+    "shock": {
+      "mean_pairwise_spearman": 0.6830908896968256
+    },
+    "regime": {
+      "mean_pairwise_spearman": 0.560578244593068
+    }
+  }
+}

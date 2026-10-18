@@ -387,7 +387,12 @@
       return true;
     });
     const loneUrls = items.some((c) => c.url) ? [] : (exp.urls || []).map(safeUrl).filter(Boolean);
-    if (!items.length && !loneUrls.length) return null;
+    const notes = (exp.notes || []).map((n) => el("li", { text: n }));
+    const notesList = notes.length ? el("ul", { class: "retrieval-notes", "aria-label": "How the context was retrieved" }, notes) : null;
+    if (!items.length && !loneUrls.length) {
+      return notesList ? el("section", { class: "detail-section" },
+        el("h3", {}, icon("link", 14), "Retrieved sources (0)"), notesList) : null;
+    }
 
     const sourceRow = ({ source, date, title, href }) => {
       const label = SOURCE_LABELS[source] || source || "Source";
@@ -410,7 +415,7 @@
       loneUrls.map((href) => sourceRow({ href })),
     );
     return el("section", { class: "detail-section" },
-      el("h3", {}, icon("link", 14), `Retrieved sources (${items.length + loneUrls.length})`), list);
+      el("h3", {}, icon("link", 14), `Retrieved sources (${items.length + loneUrls.length})`), list, notesList);
   }
 
   function pips(n, total) {
