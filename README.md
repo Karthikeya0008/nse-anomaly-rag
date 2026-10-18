@@ -16,7 +16,9 @@ explained on demand.
 - Separate **shock** (single-day) and **regime** (20–60-day) models, so one-day events in calm markets aren't drowned out by long crises.
 - The shock ensemble flags all **13/13** reference market events, **11/11** of them in a walk-forward test that never sees the future.
 - Anomaly-aware retrieval finds the real cause for **9/13** reference events vs **5/13** for a naive baseline, and never uses off-period background articles.
-- Dashboard with interactive chart, filters, model agreement, sources, and a **See explanation** button backed by a local API.
+- **SHAP explainability:** exact Shapley values show which features drove each of the five models (and the ensemble) to flag a day.
+- **Differential privacy layer:** a privacy-preserving ensemble (ε = 2 per feature set) whose model files hold only noisy statistics — unlike kNN/LOF, from which every training day can be recovered exactly — and which still catches **13/13** reference events.
+- Dashboard with interactive chart, filters, model agreement, SHAP bars, the private model's verdict, sources, and a **See explanation** button backed by a local API.
 
 ---
 
@@ -25,6 +27,8 @@ explained on demand.
 - [How it works](#how-it-works)
 - [What the anomaly types mean](#what-the-anomaly-types-mean)
 - [Results](#results)
+- [Explainability: SHAP](#explainability-shap)
+- [Differential privacy](#differential-privacy)
 - [Project structure](#project-structure)
 - [Setup](#setup)
 - [Running the dashboard](#running-the-dashboard)
@@ -43,6 +47,10 @@ flowchart LR
     B --> C[build_features.py<br/>12 features / day]
     C --> D[train_multi_model.py<br/>5 detectors x 3 feature sets]
     D --> E[build_final_anomalies.py<br/>shock / regime / both]
+    D --> H[explain_shap.py<br/>exact Shapley values]
+    C --> P[privacy/train_dp_models.py<br/>DP ensemble + ledger]
+    P --> E
+    H --> W
     S[Scrapers<br/>SEBI, Business Standard,<br/>Wikipedia] --> I[ingest_all_to_chroma.py<br/>chunk + embed]
     I --> V[(Chroma<br/>vector store)]
     E --> X[explain_anomalies.py<br/>retrieval.py + Gemini]
@@ -63,6 +71,8 @@ flowchart LR
    4. A similarity floor drops off-topic chunks instead of always returning *k*; one chunk per article.
    5. **Wikipedia only if needed:** used only when fewer than 2 relevant news chunks exist, and only for articles about events dated within 45 days.
 5. **Explanation.** Gemini receives the anomaly's numbers, the retrieved context and retrieval notes, and must answer in a fixed structure — *Likely cause*, *Supporting evidence*, *Confidence*, *Caveats* — citing only the retrieved material.
+6. **Model explainability.** SHAP values say *which features* made the models flag the day; the RAG explanation says *what happened in the world*. See [Explainability: SHAP](#explainability-shap).
+7. **Privacy layer.** A differentially private ensemble is trained alongside the production one and its verdict shown next to it. See [Differential privacy](#differential-privacy).
 
 ## What the anomaly types mean
 
@@ -76,7 +86,7 @@ Splitting the two matters: with all 12 features in one model, 62% of flags lande
 
 ## Results
 
-Full reports: [`db/validation/NIFTY50_model_validation.md`](db/validation/NIFTY50_model_validation.md) and [`db/validation/NIFTY50_retrieval_eval.md`](db/validation/NIFTY50_retrieval_eval.md).
+Full reports in `db/validation/`: [`NIFTY50_model_validation.md`](db/validation/NIFTY50_model_validation.md), [`NIFTY50_retrieval_eval.md`](db/validation/NIFTY50_retrieval_eval.md) and [`NIFTY50_dp_report.md`](db/validation/NIFTY50_dp_report.md).
 
 **Detection** (NIFTY 50, Oct 2016 – Jul 2026, 2,418 trading days)
 
@@ -105,6 +115,65 @@ The shock detector holds up across every check. The regime detector separates ca
 | News distance from a shock day (mean) | 2.1 days | **1.1 days** |
 | Days with no relevant context (explainer says so) | 0% | 19% |
 
+## Explainability: SHAP
+
+For every flagged day, [`explain_shap.py`](backend/src/models/explain_shap.py) computes how much each feature pushed each detector's anomaly score up (towards *anomalous*) or down, relative to a typical day — for Isolation Forest, One-Class SVM, LOF, Elliptic Envelope, kNN distance, and the ensemble itself.
+
+- **Exact, not sampled.** With 4 shock / 6 regime features there are only 16 / 64 feature coalitions, so interventional Shapley values are computed exactly (what SHAP's KernelExplainer approximates):
+  `v(S)` = mean model score when the day keeps its own values for features in `S` and takes a background day's values for the rest; `φᵢ = Σ_S |S|!(d−|S|−1)!/d! · (v(S∪{i}) − v(S))`.
+- **Baseline:** 100 random non-flagged days, so the base value is "the score of a normal day". Contributions add up exactly to *score − base* (checked: max error 2·10⁻¹³).
+- **Model-agnostic and consistent:** the same procedure for all five detectors, so their attributions can be compared side by side; the ensemble is explained through its own function (mean percentile of the five scores, as in production — r = 0.999 with the production score).
+- **In the dashboard:** select a flagged day → *Why it was flagged (SHAP)* shows signed bars per feature with the day's value next to a typical day's, a switch between the five models and the ensemble, a shock/regime toggle for days flagged by both, and each model's top factor.
+
+Example: on **1 Feb 2023** (Union Budget) the index closed only −0.26%, yet every model attributes the flag mainly to the **intraday range** (58% for the ensemble): the market swung widely during the day and recovered — something the closing return alone hides.
+
+## Differential privacy
+
+### Why
+
+1. **The trained models leak their training data.** The dashboard's detectors were fitted on historical days, and the saved files reproduce them: inverting the kNN and LOF files with their own saved scaler recovers **100% of the 2,418 training days' features exactly**; each One-Class SVM file contains ~130 real days as support vectors (the most unusual ones). Isolation Forest stores split thresholds drawn from the data's ranges. Shipping or publishing these files therefore ships the data. ([`NIFTY50_dp_report.md`](db/validation/NIFTY50_dp_report.md), section 1.)
+2. **The same pipeline is meant for sensitive data.** Exchanges, brokers and regulators run exactly this kind of anomaly detection on client-level orders, trades and positions (spoofing, insider trading, unusual exposures). There, a model or statistic shared between institutions — or a dashboard published more widely — must not reveal whether a particular client's or day's records were in the training set. Differential privacy is the standard formal guarantee for that.
+3. **For public index data the privacy gain itself is nominal** — NIFTY 50 prices are public. The value here is architectural: the layer is in place, its cost is measured, and it can be pointed at private data unchanged. A side benefit is bounded influence: no single day can move the fitted model by more than the noise allows.
+
+### Where it sits
+
+```
+features ──► [ public transform: clip to public bounds, asinh(x / public scale) ]   (no privacy cost)
+                 │
+                 ├─► DP random partition trees ┐
+                 ├─► DP histogram density      ├─► DP score calibration ──► DP threshold ──► DP model
+                 └─► DP Gaussian distance      ┘          (noisy CDFs)          (noisy quantile)   (shareable)
+                                                       privacy ledger: ε spent per component
+```
+
+It is a training-time layer between feature engineering and model fitting ([`backend/src/privacy/`](backend/src/privacy)), plus a ledger that accounts for every ε spent. The DP models are saved to `db/models/dp/`, their verdicts merged into `NIFTY50_final_anomalies.csv`, and the dashboard shows them under *Privacy-preserving model* next to the production verdict.
+
+### How
+
+| Production detector | DP counterpart | What is learned, and the mechanism |
+|---|---|---|
+| Isolation Forest | **DP random partition trees** | Splits chosen at random *without looking at the data*; 8 trees on disjoint slices of days (parallel composition), Laplace noise on leaf counts |
+| Elliptic Envelope | **DP Gaussian distance** | Noisy per-feature mean and spread (Laplace on clipped sums), diagonal Mahalanobis distance |
+| — | **DP histogram density (HBOS)** | Laplace-noised per-feature histograms |
+| LOF, kNN, One-Class SVM | not used | They store training rows by design; DP versions are not practical here |
+
+- **Unit of privacy:** one trading day's feature row (add/remove one day). A model is ε-DP if no single day changes the probability of any fitted model by more than a factor e^ε.
+- **Budget:** ε = 2 per feature set, split across trees (25%), histogram (20%), Gaussian (15%), score calibration (30%) and threshold (10%). Shock and regime models both use every day, so a day's total is **ε = 4** (sequential composition).
+- **Public inputs only:** feature bounds come from market rules and maths (NSE's 20% market-wide circuit breaker; |z| ≤ 4.25 for a value inside its own 20-day window), scales from typical magnitudes (≈1% daily volatility), and the day count from the exchange calendar.
+- **Unbiased calibration:** score distributions use unclamped noisy counts divided by the public day count, then made monotone — clamping noise at zero inflates the tail and suppresses all flags at small ε.
+
+### Cost and limits
+
+| ε per feature set | 0.25 | 0.5 | 1 | 2 | 5 | ∞ (same detectors, no noise) |
+|---|---|---|---|---|---|---|
+| Shock: reference events caught (of 13) | 8.5 | 9.5 | 10.4 | **12.8** | 12.9 | 13.0 |
+| Shock: overlap with production flags (Jaccard) | 0.24 | 0.31 | 0.38 | **0.56** | 0.59 | 0.60 |
+| Regime: overlap with production flags | 0.14 | 0.24 | 0.34 | **0.43** | 0.58 | 0.63 |
+
+Averages over 10 noise draws (full table in the report). From ε ≈ 2 the noise costs little; the remaining gap to production comes from using three DP-compatible detectors instead of five.
+
+What it does **not** cover: a day's own flag is computed from that day's own features (that is the point of anomaly detection), so per-day outputs are disclosures by design; DP protects what the *model* reveals about the other days. One raw price feeds up to 61 feature rows (60-day windows), so for a single price the guarantee is ε × 61 — for client-level data the unit would be the client. The mechanisms are a transparent teaching implementation; a production deployment should use a hardened library (e.g. OpenDP).
+
 ## Project structure
 
 ```
@@ -119,7 +188,12 @@ nse-anomaly-rag/
 │       │   ├── train_isolation_forest.py # single-model baseline, all 7 sectors (+ shared config)
 │       │   ├── train_multi_model.py      # 6 detectors x {shock, regime, all} feature sets
 │       │   ├── build_final_anomalies.py  # shock/regime/both labels + regime episodes
+│       │   ├── explain_shap.py           # exact SHAP values for the 5 detectors + ensemble
 │       │   └── validate_models.py        # validation suite (walk-forward, injection, ...)
+│       ├── privacy/
+│       │   ├── dp_mechanisms.py          # Laplace, DP histograms, privacy ledger
+│       │   ├── dp_detectors.py           # DP trees / histogram / Gaussian + DP ensemble
+│       │   └── train_dp_models.py        # DP models, leakage demo, privacy-utility report
 │       ├── rag/
 │       │   ├── scrapers/                 # SEBI, Business Standard, Wikipedia (+ Moneycontrol, unused)
 │       │   ├── ingestion/
@@ -135,7 +209,7 @@ nse-anomaly-rag/
     ├── raw/<SECTOR>/                     # NSE index OHLC CSVs, one per year
     ├── raw_text/{sebi,news_bs,wikipedia} # scraped documents (JSON)
     ├── processed/                        # merged prices, features, model outputs
-    ├── models/                           # fitted models (joblib); multi/ = ensemble members
+    ├── models/                           # fitted models (joblib); multi/ = ensemble members, dp/ = DP models + ledger
     ├── events/NIFTY50_known_events.csv   # reference events used in evaluation
     ├── rebalancing/                      # index rebalancing dates (context only)
     ├── explanations/                     # generated explanations (JSON)
@@ -187,11 +261,13 @@ Run from the repository root with the virtual environment active. Each step read
 | 2. Features | `python backend\src\features\build_features.py` | `db/processed/<SECTOR>_features.csv` |
 | 3. Baseline model (all sectors) | `python backend\src\models\train_isolation_forest.py` | `db/processed/<SECTOR>_anomalies.csv` |
 | 4. Ensembles | `python backend\src\models\train_multi_model.py` | `db/processed/NIFTY50_{shock,regime,all}_model_comparison.csv` |
-| 5. Labels | `python backend\src\models\build_final_anomalies.py` | `db/processed/NIFTY50_final_anomalies.csv` |
-| 6. Explanations (optional) | `python backend\src\rag\explain_anomalies.py` | `db/explanations/NIFTY50_explanations.json` |
-| 7. Static bundle (optional) | `python backend\src\export_frontend_data.py` | `frontend/data/NIFTY50.json` |
+| 5. SHAP values | `python backend\src\models\explain_shap.py` | `db/processed/NIFTY50_shap.json` |
+| 6. DP models | `python backend\src\privacy\train_dp_models.py` | `db/models/dp/`, `NIFTY50_{shock,regime}_dp_comparison.csv`, `db/validation/NIFTY50_dp_report.md` |
+| 7. Labels | `python backend\src\models\build_final_anomalies.py` | `db/processed/NIFTY50_final_anomalies.csv` (incl. DP verdicts) |
+| 8. Explanations (optional) | `python backend\src\rag\explain_anomalies.py` | `db/explanations/NIFTY50_explanations.json` |
+| 9. Static bundle (optional) | `python backend\src\export_frontend_data.py` | `frontend/data/NIFTY50.json` |
 
-Step 6 explains flagged days since `MIN_ANOMALY_DATE` (2023-01-01) in batches of 30, one representative day per regime episode. To explain a single day of any year:
+Step 6 accepts `--epsilon` (budget per feature set, default 2). Step 8 explains flagged days since `MIN_ANOMALY_DATE` (2023-01-01) in batches of 30, one representative day per regime episode. To explain a single day of any year:
 
 ```powershell
 python backend\src\rag\explain_anomalies.py --date 2024-06-04

@@ -37,6 +37,8 @@
     applyingRange: false,
     canExplain: false,     // true when served by server.py
     service: null,         // /api/status response
+    shapModel: "ensemble", // model shown in the SHAP panel (kept across days)
+    shapSet: null,         // "shock" | "regime" for the selected day
     generating: new Set(), // dates with a request in flight
     errors: new Map(),     // date -> last error message
   };
@@ -96,6 +98,8 @@
     sparkles: "M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z",
     refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
     info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01",
+    lock: "M7 11V8a5 5 0 0 1 10 0v3M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z",
+    bars: "M4 6h10M4 12h16M4 18h7",
   };
 
   function icon(name, size = 16) {
@@ -495,7 +499,8 @@
     );
 
     const exp = hasExplanation(a) ? state.data.explanations[a.explanation_date] : null;
-    panel.replaceChildren(...[head, market, explanationSection(a, exp), exp && sourcesSection(exp)].filter(Boolean));
+    panel.replaceChildren(...[head, market, shapSection(a), explanationSection(a, exp),
+      exp && sourcesSection(exp), privacySection(a)].filter(Boolean));
     panel.scrollTop = 0;
   }
 
@@ -636,6 +641,142 @@
     $("service-status").replaceChildren(
       el("span", { class: `status-pill status-${tone}`, title: title || null },
         el("span", { class: "status-dot", "aria-hidden": "true" }), label));
+  }
+
+  // ---------------------------------------------------------------------------
+  // SHAP panel: which features drove each model's anomaly score
+  // ---------------------------------------------------------------------------
+  const MODEL_LABELS = {
+    ensemble: "Ensemble", isoforest: "Isolation Forest", ocsvm: "One-Class SVM",
+    lof: "LOF", elliptic: "Elliptic Envelope", knn: "kNN distance",
+  };
+  const SIGNED_FEATURES = new Set(["log_return", "gap", "return_5d", "return_20d", "return_60d", "ma_deviation_60d",
+    "return_zscore", "rolling_sharpe_20d"]);
+
+  /** Re-render the panel after a control inside it changed, without jumping to the top. */
+  function rerenderDetailInPlace() {
+    const panel = $("detail");
+    const pageY = window.scrollY, panelY = panel.scrollTop;
+    renderDetail();
+    panel.scrollTop = panelY;
+    window.scrollTo(0, pageY);
+  }
+
+  function shapSetsFor(a) {
+    const sets = state.data.shap?.sets || {};
+    return ["shock", "regime"].filter((s) => sets[s]?.days?.[a.date]);
+  }
+
+  function formatFeature(name, v) {
+    const pctFeature = (state.data.shap.percent_features || []).includes(name);
+    const signed = SIGNED_FEATURES.has(name);
+    if (pctFeature) return signed ? pct(v) : `${(v * 100).toFixed(2)}%`;
+    return signed ? signed2(v) : v.toFixed(2);
+  }
+  const signed2 = (v) => signed(v, 2);
+
+  function formatScore(model, v) {
+    return model === "ensemble" ? v.toFixed(3) : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2);
+  }
+
+  function shapSection(a) {
+    const sets = shapSetsFor(a);
+    if (!sets.length) return null;
+    if (!sets.includes(state.shapSet)) state.shapSet = sets[0];
+    const fs = state.shapSet;
+    const meta = state.data.shap.sets[fs];
+    const day = meta.days[a.date];
+    const model = meta.models.includes(state.shapModel) ? state.shapModel : "ensemble";
+    const entry = day.models[model];
+    const labels = state.data.shap.feature_labels;
+
+    const section = el("section", { class: "detail-section shap" },
+      el("div", { class: "section-head" },
+        el("h3", {}, icon("bars", 14), "Why it was flagged (SHAP)"),
+        sets.length > 1 ? el("div", { class: "mini-toggle", role: "group", "aria-label": "Feature set" },
+          sets.map((s) => el("button", {
+            type: "button", "aria-pressed": String(s === fs),
+            onclick: () => { state.shapSet = s; rerenderDetailInPlace(); },
+          }, s === "shock" ? "Shock" : "Regime"))) : null,
+      ),
+    );
+
+    const chipOrder = ["ensemble", ...meta.models.filter((m) => m !== "ensemble")];
+    section.append(el("div", { class: "model-chips", role: "group", "aria-label": "Model" },
+      chipOrder.map((m) => el("button", {
+        type: "button", class: "model-chip", "aria-pressed": String(m === model),
+        onclick: () => { state.shapModel = m; rerenderDetailInPlace(); },
+      }, MODEL_LABELS[m] || m))));
+
+    const base = meta.base_values[model];
+    section.append(el("p", { class: "shap-summary" },
+      `${MODEL_LABELS[model]} anomaly score `, el("strong", { text: formatScore(model, entry.score) }),
+      ` vs ${formatScore(model, base)} on a typical day. Bars show how much each `,
+      fs === "shock" ? "single-day" : "20/60-day", " feature moved the score:"));
+
+    const total = entry.phi.reduce((s, p) => s + Math.abs(p), 0) || 1;
+    const maxAbs = Math.max(...entry.phi.map(Math.abs)) || 1;
+    const order = entry.phi.map((p, i) => i).sort((i, j) => Math.abs(entry.phi[j]) - Math.abs(entry.phi[i]));
+
+    section.append(el("ul", { class: "shap-bars" }, order.map((i) => {
+      const name = meta.features[i];
+      const phi = entry.phi[i];
+      const share = (phi / total) * 100;
+      const width = (Math.abs(phi) / maxAbs) * 50;
+      return el("li", { class: "shap-row" },
+        el("div", { class: "shap-label" },
+          el("span", { class: "shap-name", text: labels[name] || name }),
+          el("span", { class: "shap-value",
+            text: `${formatFeature(name, day.values[i])} · typical ${formatFeature(name, meta.typical[name])}` })),
+        el("div", { class: "shap-track", role: "img",
+          "aria-label": `${labels[name] || name}: ${share >= 0 ? "raises" : "lowers"} the anomaly score, ${Math.abs(share).toFixed(0)}% of the total effect` },
+          el("span", { class: `shap-bar ${phi >= 0 ? "up" : "down"}`,
+            style: phi >= 0 ? `left: 50%; width: ${width}%` : `right: 50%; width: ${width}%` })),
+        el("span", { class: `shap-share ${phi >= 0 ? "up" : "down"}`, text: `${share >= 0 ? "+" : MINUS}${Math.abs(share).toFixed(0)}%` }),
+      );
+    })));
+
+    section.append(el("div", { class: "shap-legend" },
+      el("span", {}, el("i", { class: "shap-key up" }), "towards anomalous"),
+      el("span", {}, el("i", { class: "shap-key down" }), "towards normal")));
+
+    // Top factor per model -- do the detectors agree on why?
+    const top = meta.models.filter((m) => m !== "ensemble").map((m) => {
+      const phi = day.models[m].phi;
+      const i = phi.reduce((best, p, k) => (p > phi[best] ? k : best), 0);
+      return el("li", {}, el("span", { class: "top-model", text: MODEL_LABELS[m] }),
+        el("span", { class: "top-feature", text: labels[meta.features[i]] || meta.features[i] }));
+    });
+    section.append(el("details", { class: "shap-more" },
+      el("summary", { text: "Top factor for each model" }),
+      el("ul", { class: "top-factors" }, top),
+      el("p", { class: "hint", text: `Exact Shapley values over all ${2 ** meta.features.length} feature combinations; `
+        + `baseline: ${state.data.shap.background}. Contributions add up exactly to the score difference from a typical day.` })));
+    return section;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Differential privacy: verdict of the privacy-preserving models
+  // ---------------------------------------------------------------------------
+  function privacySection(a) {
+    const p = state.data.privacy;
+    if (!p || a.dp_shock_anomaly === undefined) return null;
+    const row = (label, flagged, votes, production) => el("div", { class: "dp-row" },
+      el("span", { class: "dp-label", text: label }),
+      el("span", { class: `dp-verdict ${flagged ? "dp-yes" : "dp-no"}`, text: flagged ? "Flagged" : "Not flagged" }),
+      el("span", { class: "dp-votes", text: `${votes} of 3 detectors` }),
+      el("span", { class: "dp-agree", text: flagged === production ? "agrees" : "differs" }));
+    const isShock = a.anomaly_type !== "regime";
+    const isRegime = a.anomaly_type !== "shock";
+    return el("section", { class: "detail-section dp" },
+      el("h3", {}, icon("lock", 14), "Privacy-preserving model"),
+      el("div", { class: "dp-rows" },
+        row("Shock", a.dp_shock_anomaly, a.dp_shock_votes, isShock),
+        row("Regime", a.dp_regime_anomaly, a.dp_regime_votes, isRegime)),
+      el("p", { class: "hint", text:
+        `A second ensemble (${p.detectors.join(", ")}) trained with differential privacy, ε = ${p.epsilon_per_feature_set} `
+        + `per feature set (${+p.total_epsilon_per_trading_day.toFixed(2)} per trading day). Its files hold only noisy statistics, `
+        + `so it can be shared without revealing the training days. "Agrees" compares with the production verdict above.` }));
   }
 
   function selectDay(date, { scrollRow = true } = {}) {

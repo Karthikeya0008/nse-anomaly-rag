@@ -88,9 +88,17 @@ def build(sector: str) -> dict:
                     "shock_votes", "regime_votes", "shock_score", "regime_score",
                     "regime_episode_start", "regime_episode_end", "near_rebalancing",
                     "rebalancing_notes", "explanation_date"]
-    records = anomalies[anomaly_cols].to_dict(orient="records")
+    dp_cols = [c for c in ("dp_shock_anomaly", "dp_shock_votes", "dp_regime_anomaly", "dp_regime_votes")
+               if c in anomalies.columns]
+    records = anomalies[anomaly_cols + dp_cols].to_dict(orient="records")
     for r in records:
         r["near_rebalancing"] = str(r["near_rebalancing"]) == "True"
+        for k in ("dp_shock_anomaly", "dp_regime_anomaly"):
+            if k in r:
+                r[k] = str(r[k]) == "True"
+        for k in ("dp_shock_votes", "dp_regime_votes"):
+            if k in r:
+                r[k] = int(r[k])
         r["event"] = events.get(r["date"])
         # Empty strings -> null; also catches the NaN pandas puts in explanation_date
         # once some (but not all) days have an explanation -- NaN is not valid JSON.
@@ -111,6 +119,33 @@ def build(sector: str) -> dict:
         "anomalies": records,
         "episodes": episodes.to_dict(orient="records"),
         "explanations": explanations,
+        "shap": load_shap(sector),
+        "privacy": load_privacy_summary(sector),
+    }
+
+
+def load_shap(sector: str) -> dict | None:
+    """Per-day SHAP attributions from models/explain_shap.py, if computed."""
+    path = PROCESSED_DIR / f"{sector}_shap.json"
+    if not path.exists():
+        return None
+    with open(path, encoding="utf-8") as f:
+        shap = json.load(f)
+    return {k: shap[k] for k in ("method", "background", "feature_labels", "percent_features", "sets")}
+
+
+def load_privacy_summary(sector: str) -> dict | None:
+    """Epsilon budget of the DP models from privacy/train_dp_models.py, if trained."""
+    path = PROJECT_ROOT / "db" / "models" / "dp" / f"{sector}_privacy_ledger.json"
+    if not path.exists():
+        return None
+    with open(path, encoding="utf-8") as f:
+        ledger = json.load(f)
+    return {
+        "epsilon_per_feature_set": ledger["epsilon_per_feature_set"],
+        "total_epsilon_per_trading_day": ledger["total_epsilon_per_trading_day"],
+        "unit_of_privacy": ledger["unit_of_privacy"],
+        "detectors": ["random partition trees", "histogram density", "Gaussian distance"],
     }
 
 

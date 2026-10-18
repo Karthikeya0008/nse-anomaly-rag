@@ -1,0 +1,167 @@
+{
+  "sector": "NIFTY50",
+  "unit_of_privacy": "one trading day's feature row (add/remove)",
+  "epsilon_per_feature_set": 2.0,
+  "feature_sets": {
+    "shock": {
+      "budget": 2.0,
+      "spent": 1.9999999999999998,
+      "entries": [
+        {
+          "component": "dp_random_trees",
+          "epsilon": 0.5,
+          "composition": "sequential",
+          "note": "8 trees on disjoint slices (parallel composition), Laplace(1/eps) leaf counts"
+        },
+        {
+          "component": "dp_histogram",
+          "epsilon": 0.4,
+          "composition": "sequential",
+          "note": "4 histograms x 20 bins, Laplace(d/eps)"
+        },
+        {
+          "component": "dp_gaussian",
+          "epsilon": 0.3,
+          "composition": "sequential",
+          "note": "noisy sums of (u-0.5) and (u-0.5)^2, Laplace"
+        },
+        {
+          "component": "calibrate dp_random_trees",
+          "epsilon": 0.19999999999999998,
+          "composition": "sequential",
+          "note": "score histogram, Laplace(1/eps)"
+        },
+        {
+          "component": "calibrate dp_histogram",
+          "epsilon": 0.19999999999999998,
+          "composition": "sequential",
+          "note": "score histogram, Laplace(1/eps)"
+        },
+        {
+          "component": "calibrate dp_gaussian",
+          "epsilon": 0.19999999999999998,
+          "composition": "sequential",
+          "note": "score histogram, Laplace(1/eps)"
+        },
+        {
+          "component": "threshold",
+          "epsilon": 0.2,
+          "composition": "sequential",
+          "note": "histogram of combined score, Laplace(1/eps)"
+        }
+      ]
+    },
+    "regime": {
+      "budget": 2.0,
+      "spent": 1.9999999999999998,
+      "entries": [
+        {
+          "component": "dp_random_trees",
+          "epsilon": 0.5,
+          "composition": "sequential",
+          "note": "8 trees on disjoint slices (parallel composition), Laplace(1/eps) leaf counts"
+        },
+        {
+          "component": "dp_histogram",
+          "epsilon": 0.4,
+          "composition": "sequential",
+          "note": "6 histograms x 20 bins, Laplace(d/eps)"
+        },
+        {
+          "component": "dp_gaussian",
+          "epsilon": 0.3,
+          "composition": "sequential",
+          "note": "noisy sums of (u-0.5) and (u-0.5)^2, Laplace"
+        },
+        {
+          "component": "calibrate dp_random_trees",
+          "epsilon": 0.19999999999999998,
+          "composition": "sequential",
+          "note": "score histogram, Laplace(1/eps)"
+        },
+        {
+          "component": "calibrate dp_histogram",
+          "epsilon": 0.19999999999999998,
+          "composition": "sequential",
+          "note": "score histogram, Laplace(1/eps)"
+        },
+        {
+          "component": "calibrate dp_gaussian",
+          "epsilon": 0.19999999999999998,
+          "composition": "sequential",
+          "note": "score histogram, Laplace(1/eps)"
+        },
+        {
+          "component": "threshold",
+          "epsilon": 0.2,
+          "composition": "sequential",
+          "note": "histogram of combined score, Laplace(1/eps)"
+        }
+      ]
+    }
+  },
+  "generated": "2026-10-19T01:51:11",
+  "budget_split": {
+    "dp_random_trees": 0.25,
+    "dp_histogram": 0.2,
+    "dp_gaussian": 0.15,
+    "calibration": 0.3,
+    "threshold": 0.1
+  },
+  "public_bounds": {
+    "log_return": [
+      -0.2,
+      0.2
+    ],
+    "gap": [
+      -0.2,
+      0.2
+    ],
+    "range_vol": [
+      0.0,
+      0.2
+    ],
+    "return_zscore": [
+      -4.25,
+      4.25
+    ],
+    "return_20d": [
+      -0.4,
+      0.4
+    ],
+    "return_60d": [
+      -0.6,
+      0.6
+    ],
+    "volatility_20d": [
+      0.0,
+      0.08
+    ],
+    "volatility_60d": [
+      0.0,
+      0.06
+    ],
+    "ma_deviation_60d": [
+      -0.4,
+      0.4
+    ],
+    "rolling_sharpe_20d": [
+      -1.5,
+      1.5
+    ]
+  },
+  "public_scales": {
+    "log_return": 0.01,
+    "gap": 0.005,
+    "range_vol": 0.01,
+    "return_zscore": 1.0,
+    "return_20d": 0.04,
+    "return_60d": 0.07,
+    "volatility_20d": 0.01,
+    "volatility_60d": 0.01,
+    "ma_deviation_60d": 0.04,
+    "rolling_sharpe_20d": 0.3
+  },
+  "total_epsilon_per_trading_day": 3.9999999999999996,
+  "total_epsilon_per_raw_price": 243.99999999999997
+}

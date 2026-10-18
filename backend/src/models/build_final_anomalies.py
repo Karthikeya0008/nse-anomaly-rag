@@ -66,13 +66,33 @@ def build(sector: str) -> pd.DataFrame:
     df["anomaly"] = df["anomaly_type"] != ""
     df["rebalancing_notes"] = df["rebalancing_notes"].fillna("")
 
+    dp_cols = add_dp_verdicts(df, sector)
+
     return df[KEEP_COLS + [
         "anomaly", "anomaly_type",
         "shock_score", "shock_votes", "shock_anomaly",
         "regime_score", "regime_votes", "regime_anomaly",
         "regime_episode_start", "regime_episode_end",
         "near_rebalancing", "rebalancing_notes",
+        *dp_cols,
     ]]
+
+
+def add_dp_verdicts(df: pd.DataFrame, sector: str) -> list[str]:
+    """Verdicts of the differentially private ensembles (privacy/train_dp_models.py),
+    if they've been trained -- shown alongside the production labels, not used for them."""
+    cols = []
+    for fs in ("shock", "regime"):
+        path = PROCESSED_DIR / f"{sector}_{fs}_dp_comparison.csv"
+        if not path.exists():
+            continue
+        dp = pd.read_csv(path, parse_dates=["date"])[["date", "dp_anomaly", "dp_votes"]]
+        dp.columns = ["date", f"dp_{fs}_anomaly", f"dp_{fs}_votes"]
+        merged = df[["date"]].merge(dp, on="date", how="left", validate="one_to_one")
+        df[f"dp_{fs}_anomaly"] = merged[f"dp_{fs}_anomaly"].fillna(False).astype(bool).to_numpy()
+        df[f"dp_{fs}_votes"] = merged[f"dp_{fs}_votes"].fillna(0).astype(int).to_numpy()
+        cols += [f"dp_{fs}_anomaly", f"dp_{fs}_votes"]
+    return cols
 
 
 if __name__ == "__main__":
