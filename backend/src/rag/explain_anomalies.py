@@ -44,6 +44,10 @@ MAX_ANOMALIES_PER_RUN = 30
 SECTOR = "NIFTY50"
 MIN_ANOMALY_DATE = "2023-01-01"
 
+REQUIRED_COLUMNS = ["date", "anomaly", "anomaly_type", "shock_votes", "regime_votes",
+                    "regime_score", "regime_episode_start", "regime_episode_end"]
+ENSEMBLE_SIZE = 5  # models voting in each ensemble (see models/train_multi_model.py)
+
 
 # ============================================================================
 # GEMINI
@@ -202,6 +206,32 @@ def _format_source_block(chunks: list, label: str, is_point_in_time: bool) -> st
     return "\n".join(lines)
 
 
+def collapse_regime_episodes(flagged: pd.DataFrame) -> pd.DataFrame:
+    """A regime episode can span dozens of days that all share one cause. Keep each
+    shock/both day, but only the strongest regime-only day of each episode."""
+    regime_only = flagged["anomaly_type"] == "regime"
+    peaks = (flagged[regime_only]
+             .assign(_score=lambda d: d["regime_score"].astype(float))
+             .sort_values("_score", ascending=False)
+             .drop_duplicates("regime_episode_start")
+             .drop(columns="_score"))
+    return pd.concat([flagged[~regime_only], peaks]).sort_values("date")
+
+
+def describe_anomaly_type(anomaly_row: pd.Series) -> str:
+    kind = anomaly_row.get("anomaly_type", "")
+    episode = (f"{anomaly_row.get('regime_episode_start')} to "
+               f"{anomaly_row.get('regime_episode_end')}")
+    if kind == "shock":
+        return "SHOCK -- the day itself was extreme (single-day return, gap, intraday range)"
+    if kind == "regime":
+        return (f"REGIME -- the day sits inside an unusual multi-week period ({episode}) "
+                "of abnormal trend/volatility; the day itself may look ordinary")
+    if kind == "both":
+        return f"BOTH -- an extreme day inside an unusual multi-week period ({episode})"
+    return "unknown"
+
+
 def build_prompt(anomaly_row: pd.Series, sector: str, context_by_source: dict) -> str:
     anomaly_date = normalize_date(anomaly_row["date"])
     close = anomaly_row.get("close", "N/A")
@@ -209,15 +239,19 @@ def build_prompt(anomaly_row: pd.Series, sector: str, context_by_source: dict) -
     return_zscore = safe_float(anomaly_row.get("return_zscore", 0.0))
     return_60d = anomaly_row.get("return_60d", "N/A")
     near_rebalancing = anomaly_row.get("near_rebalancing", "N/A")
+    shock_votes = anomaly_row.get("shock_votes", "N/A")
+    regime_votes = anomaly_row.get("regime_votes", "N/A")
 
     regulatory_block = _format_source_block(context_by_source.get("sebi", []), "Regulatory Filings (SEBI)", True)
     news_block = _format_source_block(context_by_source.get("business_standard", []), "News Coverage (Business Standard)", True)
     background_block = _format_source_block(context_by_source.get("wikipedia", []), "Background Reference (Wikipedia)", False)
 
-    return f"""You are analyzing an anomalous trading day flagged by an Isolation Forest model on the {sector} index.
+    return f"""You are analyzing an anomalous trading day on the {sector} index, flagged by an ensemble of unsupervised anomaly detectors (Isolation Forest, One-Class SVM, LOF, Elliptic Envelope, KNN distance).
 
 ANOMALY DETAILS
 - Date: {anomaly_date}
+- Anomaly type: {describe_anomaly_type(anomaly_row)}
+- Models agreeing: shock {shock_votes}/{ENSEMBLE_SIZE}, regime {regime_votes}/{ENSEMBLE_SIZE}
 - Closing price: {close}
 - Daily log return: {log_return:.4f}
 - Return z-score (vs 20-day mean/std): {return_zscore:.2f}
@@ -233,6 +267,8 @@ RETRIEVED CONTEXT
 {background_block}
 
 INSTRUCTIONS
+For a REGIME anomaly, explain what drove the period as a whole rather than this single day's move.
+
 Regulatory Filings and News Coverage above are dated near the anomaly and are your primary evidence. Background Reference is general knowledge that may or may not relate to this specific date -- use it only for context, never as evidence of what happened on {anomaly_date} specifically.
 
 Respond in exactly this structure:
@@ -265,6 +301,7 @@ def explain_anomaly(client, collection, anomaly_row: pd.Series, sector: str) -> 
     return {
         "date": anomaly_date,
         "sector": sector,
+        "anomaly_type": anomaly_row.get("anomaly_type", ""),
         "log_return": safe_float(anomaly_row.get("log_return", 0.0)),
         "return_zscore": safe_float(anomaly_row.get("return_zscore", 0.0)),
         "chunks_per_source": {src: len(chunks) for src, chunks in context_by_source.items()},
@@ -295,31 +332,21 @@ def run():
     collection = get_chroma_collection()
     client = get_gemini_client()
 
-    anomalies_path = PROCESSED_DIR / f"{SECTOR}_anomalies.csv"
+    # Built by models/build_final_anomalies.py from the shock + regime ensembles.
+    anomalies_path = PROCESSED_DIR / f"{SECTOR}_final_anomalies.csv"
     if not anomalies_path.exists():
-        raise FileNotFoundError(f"Anomaly CSV does not exist:\n{anomalies_path}")
+        raise FileNotFoundError(
+            f"Anomaly CSV does not exist:\n{anomalies_path}\n\n"
+            "Run models/train_multi_model.py then models/build_final_anomalies.py first."
+        )
 
     # FIX: encoding="utf-8-sig" strips a BOM if present, which otherwise
     # makes pandas read the first column as "\ufeffdate" instead of "date".
-    
-    df = pd.read_csv(anomalies_path, header=None, encoding="utf-8-sig")
-
-    df.columns = [
-        "date",
-        "close",
-        "log_return",
-        "return_zscore",
-        "return_60d",
-        "return_60d_zscore",
-        "near_rebalancing",
-        "volatility_20d",
-        "anomaly",
-        "unused",
-    ]
+    df = pd.read_csv(anomalies_path, encoding="utf-8-sig", keep_default_na=False)
 
     print(f"Columns found in CSV: {list(df.columns)}\n")
 
-    missing_columns = [c for c in ["date", "anomaly"] if c not in df.columns]
+    missing_columns = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing_columns:
         raise ValueError(
             "CSV is missing required columns: " + ", ".join(missing_columns) +
@@ -332,6 +359,9 @@ def run():
     date_mask = flagged["date"].astype(str) >= MIN_ANOMALY_DATE
     flagged = flagged[date_mask].copy()
     print(f"Filtering to anomalies on or after {MIN_ANOMALY_DATE}")
+
+    flagged = collapse_regime_episodes(flagged)
+    print(f"Regime-only days collapsed to one representative day per episode")
 
     out_path = EXPLANATIONS_DIR / f"{SECTOR}_explanations.json"
     existing = {}
