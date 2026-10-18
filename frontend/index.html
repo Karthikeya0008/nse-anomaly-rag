@@ -5,21 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NIFTY 50 Anomaly Monitor</title>
   <meta name="description" content="Ensemble anomaly detection on the NIFTY 50 index with retrieval-augmented explanations.">
+  <meta name="color-scheme" content="light">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js" defer></script>
   <script src="app.js" defer></script>
 </head>
-<body>
-  <header class="masthead">
-    <div class="masthead-inner">
+<body class="is-loading">
+  <header class="appbar">
+    <div class="appbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="3,16 8,11 12,14 17,7 21,10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="7" r="2.2" fill="currentColor"/></svg>
+        </span>
+        <div>
+          <div class="brand-name">NSE Sector Anomaly Monitor</div>
+          <div class="brand-sub">Explainable anomaly detection</div>
+        </div>
+      </div>
+      <div id="service-status"></div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-inner">
       <div>
-        <p class="eyebrow">Market surveillance &middot; Explainable anomaly detection</p>
-        <h1>NIFTY 50 Anomaly Monitor</h1>
-        <p class="subtitle">Days flagged by an ensemble of five unsupervised detectors, with explanations generated from retrieved regulatory filings, news and reference material.</p>
+        <p class="eyebrow">Market surveillance</p>
+        <h1>Unusual trading days, detected and explained</h1>
+        <p class="subtitle">Days flagged by an ensemble of five unsupervised detectors. Select any flagged day and choose <strong>See explanation</strong> to generate an account of it from retrieved regulatory filings, news and reference material.</p>
       </div>
       <dl class="provenance" id="provenance"></dl>
     </div>
-  </header>
+  </section>
 
   <div class="page">
     <section class="toolbar" aria-label="Filters">
@@ -43,25 +62,28 @@
       </label>
     </section>
 
-    <section class="stats" aria-label="Summary for the selected period" id="stats"></section>
+    <section class="stats" aria-label="Summary for the selected period" id="stats">
+      <div class="stat skeleton"></div><div class="stat skeleton"></div><div class="stat skeleton"></div>
+      <div class="stat skeleton"></div><div class="stat skeleton"></div><div class="stat skeleton"></div>
+    </section>
 
     <main class="layout">
       <div class="primary">
         <section class="card">
           <div class="card-head">
             <div>
-              <h2>Closing price and flagged days</h2>
+              <h2><span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 19h16M7 15l3-4 3 2 4-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Closing price and flagged days</h2>
               <p class="card-note">Click a marker, or anywhere directly above or below it, to open that day's explanation. Drag the slider or Ctrl&nbsp;+&nbsp;scroll to zoom; drag the chart to pan.</p>
             </div>
             <ul class="legend" id="legend" aria-label="Legend"></ul>
           </div>
-          <div id="chart" class="chart" role="img" aria-label="NIFTY 50 closing price with flagged anomaly days marked"></div>
+          <div id="chart" class="chart skeleton" role="img" aria-label="NIFTY 50 closing price with flagged anomaly days marked"></div>
         </section>
 
         <section class="card">
           <div class="card-head">
             <div>
-              <h2>Flagged days</h2>
+              <h2><span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M5 21V4M5 4h11l-2 4 2 4H5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Flagged days</h2>
               <p class="card-note" id="table-note"></p>
             </div>
           </div>
@@ -84,29 +106,53 @@
         </section>
       </div>
 
-      <aside class="card detail" id="detail" aria-live="polite" aria-label="Selected day"></aside>
+      <aside class="card detail" id="detail" aria-live="polite" aria-label="Selected day">
+        <div class="detail-skeleton" aria-hidden="true">
+          <div class="skeleton sk-line sk-short"></div>
+          <div class="skeleton sk-line sk-title"></div>
+          <div class="skeleton sk-line"></div>
+          <div class="skeleton sk-block"></div>
+          <div class="skeleton sk-block"></div>
+        </div>
+      </aside>
     </main>
 
-    <section class="card methodology">
-      <h2>Methodology</h2>
-      <div class="method-grid">
-        <div>
-          <h3>Detection</h3>
-          <p>Five unsupervised models &mdash; Isolation Forest, One-Class SVM, Local Outlier Factor, Elliptic Envelope and k-nearest-neighbour distance &mdash; score every trading day. Scores are converted to percentile ranks and averaged; the top 5% of days are flagged. &ldquo;Agreement&rdquo; is how many of the five models individually placed the day in their own top 5%.</p>
-        </div>
-        <div>
-          <h3>Shock and regime</h3>
-          <p>The ensemble runs twice. <strong>Shock</strong> uses single-day features (return, opening gap, intraday range, return z-score) and asks whether the day itself was extreme. <strong>Regime</strong> uses 20- and 60-day trend and volatility features and asks whether the day sits inside an unusual period. A day can be both.</p>
-        </div>
-        <div>
-          <h3>Explanation</h3>
-          <p>For each flagged day, SEBI filings and Business Standard coverage dated near the day, plus Wikipedia background, are retrieved from a vector store and passed to a language model with instructions to cite only that context. Explanations are generated, not verified, and should be read alongside their sources.</p>
-        </div>
+    <section class="methodology" aria-labelledby="method-title">
+      <div class="section-intro">
+        <p class="eyebrow">How it works</p>
+        <h2 id="method-title">From raw prices to an explained anomaly</h2>
       </div>
+      <ol class="method-steps">
+        <li class="method-step">
+          <span class="step-number">01</span>
+          <h3>Detect</h3>
+          <p>Five unsupervised models &mdash; Isolation Forest, One-Class SVM, Local Outlier Factor, Elliptic Envelope and k-nearest-neighbour distance &mdash; score every trading day. Scores become percentile ranks and are averaged; the top 5% of days are flagged. <em>Agreement</em> is how many of the five models individually placed the day in their own top 5%.</p>
+        </li>
+        <li class="method-step">
+          <span class="step-number">02</span>
+          <h3>Classify</h3>
+          <p>The ensemble runs twice. <strong>Shock</strong> uses single-day features (return, opening gap, intraday range, return z-score): was the day itself extreme? <strong>Regime</strong> uses 20- and 60-day trend and volatility: is the day inside an unusual period? A day can be both.</p>
+        </li>
+        <li class="method-step">
+          <span class="step-number">03</span>
+          <h3>Explain</h3>
+          <p>SEBI filings and Business Standard coverage dated near the day, plus Wikipedia background, are retrieved from a vector store and passed to a language model that must cite only that material. Explanations are generated, not verified &mdash; read them alongside their sources.</p>
+        </li>
+      </ol>
     </section>
-
-    <footer class="footer" id="footer"></footer>
   </div>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div class="brand">
+        <span class="brand-mark brand-mark-sm" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16"><polyline points="3,16 8,11 12,14 17,7 21,10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="brand-name">NSE INDICES Anomaly Monitor</span>
+      </div>
+      <p id="footer"></p>
+    </div>
+  </footer>
 
   <noscript><p class="page">This dashboard requires JavaScript.</p></noscript>
 </body>

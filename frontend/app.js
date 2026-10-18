@@ -77,6 +77,35 @@
     return root;
   }
 
+  function typePill(type, text = TYPES[type].label, large = false) {
+    return el("span", { class: `type-pill type-${type}${large ? " type-pill-lg" : ""}` }, typeMark(type, large ? 10 : 9), text);
+  }
+
+  // 24x24 stroke icons (paths only; drawn with currentColor).
+  const ICONS = {
+    calendar: "M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z",
+    flag: "M5 21V4M5 4h11l-2 4 2 4H5",
+    doc: "M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M9 13h6M9 17h4",
+    chart: "M4 19h16M7 15l3-4 3 2 4-6",
+    cause: "M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.1V16h5v-.1c0-.8.4-1.6 1.1-2.1A6 6 0 0 0 12 3z",
+    evidence: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4",
+    confidence: "M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3zM9 12l2 2 4-4",
+    caveats: "M12 4l9 16H3L12 4zM12 10v4M12 17h.01",
+    link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
+    external: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
+    sparkles: "M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z",
+    refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
+    info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01",
+  };
+
+  function icon(name, size = 16) {
+    const root = svg("svg", { width: size, height: size, viewBox: "0 0 24 24", class: "icon", "aria-hidden": "true" });
+    root.append(svg("path", { d: ICONS[name], fill: "none", stroke: "currentColor", "stroke-width": 1.9, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    return root;
+  }
+
+  const signClass = (x) => (x > 0 ? "pos" : x < 0 ? "neg" : null);
+
   const ts = (iso) => Date.parse(iso + "T00:00:00Z");
   const isoFromTs = (t) => new Date(t).toISOString().slice(0, 10);
 
@@ -95,6 +124,12 @@
 
   function cssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  /** "#rrggbb" -> "rgba(r, g, b, a)" */
+  function withAlpha(hex, alpha) {
+    const n = parseInt(hex.replace("#", ""), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
   }
 
   function readColors() {
@@ -161,7 +196,7 @@
     $("type-filters").replaceChildren(...TYPE_ORDER.map((t) =>
       el("button", {
         type: "button",
-        class: "chip",
+        class: `chip type-${t}`,
         "aria-pressed": String(state.types.has(t)),
         onclick: () => {
           if (state.types.has(t)) state.types.delete(t); else state.types.add(t);
@@ -208,17 +243,24 @@
     const from = isoFromTs(Math.max(state.range.from, state.firstT));
     const to = isoFromTs(Math.min(state.range.to, state.lastT));
 
-    const tile = (label, value, sub, type) => el("div", { class: "stat" },
-      el("div", { class: "stat-label" }, type ? typeMark(type) : null, label),
-      el("div", { class: "stat-value", text: value }),
-      el("div", { class: "stat-sub", text: sub }),
-    );
+    const tile = (label, value, sub, { type = null, iconName = null, progress = null } = {}) =>
+      el("div", { class: type ? `stat stat-${type}` : "stat" },
+        el("div", { class: "stat-label" },
+          el("span", { class: "stat-icon" }, type ? typeMark(type, 11) : icon(iconName, 15)),
+          label),
+        el("div", { class: "stat-value", text: value }),
+        progress !== null
+          ? el("div", { class: "progress", role: "presentation" }, el("span", { style: `width: ${Math.round(progress * 100)}%` }))
+          : null,
+        el("div", { class: "stat-sub", text: sub }),
+      );
 
     $("stats").replaceChildren(
-      tile("Trading days", fmtInt.format(days), `${shortDate(from)} – ${shortDate(to)}`),
-      tile("Flagged days", fmtInt.format(v.length), days ? `${((v.length / days) * 100).toFixed(1)}% of trading days` : "—"),
-      ...TYPE_ORDER.map((t) => tile(TYPES[t].label, fmtInt.format(count(t)), TYPES[t].note, t)),
-      tile("Explained", `${fmtInt.format(explained)} / ${fmtInt.format(v.length)}`, "with a generated explanation"),
+      tile("Trading days", fmtInt.format(days), `${shortDate(from)} – ${shortDate(to)}`, { iconName: "calendar" }),
+      tile("Flagged days", fmtInt.format(v.length), days ? `${((v.length / days) * 100).toFixed(1)}% of trading days` : "—", { iconName: "flag" }),
+      ...TYPE_ORDER.map((t) => tile(TYPES[t].label, fmtInt.format(count(t)), TYPES[t].note, { type: t })),
+      tile("Explained", `${fmtInt.format(explained)} / ${fmtInt.format(v.length)}`, "with a generated explanation",
+        { iconName: "doc", progress: v.length ? explained / v.length : 0 }),
     );
   }
 
@@ -259,13 +301,13 @@
         onclick: select,
         onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); } },
       },
-        el("td", { text: shortDate(a.date) }),
-        el("td", {}, el("span", { class: "type-cell" }, typeMark(a.anomaly_type), TYPES[a.anomaly_type].label)),
+        el("td", { class: "date-cell", text: shortDate(a.date) }),
+        el("td", {}, typePill(a.anomaly_type)),
         el("td", { class: "num", text: fmtPrice.format(a.close) }),
-        el("td", { class: "num", text: pct(simpleReturn(a.log_return)) }),
+        el("td", { class: `num ${signClass(a.log_return) || ""}`, text: pct(simpleReturn(a.log_return)) }),
         el("td", { class: "num", text: signed(a.return_zscore) }),
         el("td", { class: "num", text: agreementText(a) }),
-        el("td", { class: status.cls, text: status.text }),
+        el("td", {}, el("span", { class: `exp-status ${status.cls}`, text: status.text })),
       );
     }));
   }
@@ -304,45 +346,71 @@
 
   function confidenceNode(body) {
     const m = body.match(/^(high|medium|low)\b[\s.,:;—-]*/i);
-    if (!m) return el("dd", { text: body });
+    if (!m) return el("p", { class: "exp-text", text: body });
     const level = CONFIDENCE_LEVELS[m[1].toLowerCase()];
     const meter = el("span", { class: "confidence-meter", "aria-hidden": "true" },
       [1, 2, 3].map((i) => el("i", { class: i <= level ? "on" : "" })));
     const rest = body.slice(m[0].length).trim();
-    return el("dd", {},
-      el("span", { class: "confidence" }, meter, m[1][0].toUpperCase() + m[1].slice(1).toLowerCase()),
-      rest ? el("div", { text: rest }) : null,
+    return el("div", { class: `conf-${level}` },
+      el("span", { class: "confidence" }, meter, m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() + " confidence"),
+      rest ? el("p", { class: "conf-rest", text: rest }) : null,
     );
   }
+
+  const FIELD_STYLE = {
+    "Likely Cause": { cls: "exp-cause", icon: "cause" },
+    "Supporting Evidence": { cls: "exp-evidence", icon: "evidence" },
+    "Confidence": { cls: "exp-confidence", icon: "confidence" },
+    "Caveats": { cls: "exp-caveats", icon: "caveats" },
+  };
 
   function explanationBody(text) {
     const sections = parseExplanation(text);
     if (!sections) return el("p", { class: "plain", text: text.replace(/\*\*/g, "") });
-    return el("dl", {}, sections.flatMap((s) => [
-      el("dt", { text: s.label }),
-      s.label === "Confidence" ? confidenceNode(s.body) : el("dd", { text: s.body }),
-    ]));
+    return el("div", { class: "exp-blocks" }, sections.map((s) => {
+      const style = FIELD_STYLE[s.label] || { cls: "", icon: "doc" };
+      return el("div", { class: `exp-block ${style.cls}` },
+        el("div", { class: "exp-label" }, icon(style.icon, 15), s.label),
+        s.label === "Confidence" ? confidenceNode(s.body) : el("p", { class: "exp-text", text: s.body }),
+      );
+    }));
   }
 
   function sourcesSection(exp) {
-    const items = (exp.context || []).filter((c) => c && (c.title || c.url));
+    // The retriever can return several chunks of one document; list each document once.
+    const seen = new Set();
+    const items = (exp.context || []).filter((c) => {
+      if (!c || !(c.title || c.url)) return false;
+      const key = `${c.url || ""}|${c.title || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     const loneUrls = items.some((c) => c.url) ? [] : (exp.urls || []).map(safeUrl).filter(Boolean);
     if (!items.length && !loneUrls.length) return null;
 
+    const sourceRow = ({ source, date, title, href }) => {
+      const label = SOURCE_LABELS[source] || source || "Source";
+      const tag = source === "business_standard" ? "BS" : source === "wikipedia" ? "Wiki" : source === "sebi" ? "SEBI" : "Doc";
+      const when = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? shortDate(date) : date;
+      const body = [
+        el("span", { class: `source-tag src-${source || "other"}`, title: label, text: tag }),
+        el("span", { class: "source-body" },
+          el("span", { class: "source-title", text: title || href }),
+          el("span", { class: "source-meta", text: [label, when].filter(Boolean).join(" · ") })),
+        href ? icon("external", 14) : null,
+      ];
+      return el("li", {}, href
+        ? el("a", { class: "source", href, target: "_blank", rel: "noopener noreferrer" }, body)
+        : el("div", { class: "source" }, body));
+    };
+
     const list = el("ul", { class: "sources" },
-      items.map((c) => {
-        const meta = [SOURCE_LABELS[c.source] || c.source, c.date && /^\d{4}-\d{2}-\d{2}$/.test(c.date) ? shortDate(c.date) : c.date]
-          .filter(Boolean).join(" · ");
-        const href = safeUrl(c.url);
-        const title = c.title || href;
-        return el("li", {},
-          meta ? el("span", { class: "source-meta", text: meta }) : null,
-          href ? el("a", { href, target: "_blank", rel: "noopener noreferrer", text: title }) : el("span", { text: title }),
-        );
-      }),
-      loneUrls.map((href) => el("li", {}, el("a", { href, target: "_blank", rel: "noopener noreferrer", text: href }))),
+      items.map((c) => sourceRow({ source: c.source, date: c.date, title: c.title, href: safeUrl(c.url) })),
+      loneUrls.map((href) => sourceRow({ href })),
     );
-    return el("section", { class: "detail-section" }, el("h3", { text: "Retrieved sources" }), list);
+    return el("section", { class: "detail-section" },
+      el("h3", {}, icon("link", 14), `Retrieved sources (${items.length + loneUrls.length})`), list);
   }
 
   function pips(n, total) {
@@ -350,10 +418,10 @@
       Array.from({ length: total }, (_, i) => el("i", { class: i < n ? "on" : "" })));
   }
 
-  function metric(label, value, { wide = false, sub = null, extra = null } = {}) {
+  function metric(label, value, { wide = false, sub = null, extra = null, cls = null } = {}) {
     return el("div", { class: wide ? "wide" : null },
       el("dt", { text: label }),
-      el("dd", {}, value, extra, sub ? el("span", { class: "sub", text: sub }) : null),
+      el("dd", { class: cls }, value, extra, sub ? el("span", { class: "sub", text: sub }) : null),
     );
   }
 
@@ -377,7 +445,7 @@
     const n = state.data.ensemble_size;
     const { prev, next, pos, total } = neighbours();
 
-    const head = el("div", { class: "detail-head" },
+    const head = el("div", { class: `detail-head type-${a.anomaly_type}` },
       el("div", { class: "detail-nav" },
         el("span", { text: pos >= 0 ? `Flagged day ${pos + 1} of ${total} in view` : "Outside the current view" }),
         el("span", { class: "nav-buttons" },
@@ -388,12 +456,14 @@
       el("div", { class: "detail-date", text: longDate(a.date) }),
       el("div", { class: "detail-weekday", text: fmtWeekday.format(a.t) }),
       el("div", { class: "detail-badges" },
-        el("span", { class: "badge" }, typeMark(a.anomaly_type), TYPES[a.anomaly_type].label + " anomaly"),
+        typePill(a.anomaly_type, TYPES[a.anomaly_type].label + " anomaly", true),
         a.near_rebalancing ? el("span", { class: "badge", text: "Near index rebalancing" }) : null,
       ),
       a.event ? el("div", { class: "event-note" },
-        el("strong", { text: a.event.event }),
-        a.event.notes ? el("span", { text: a.event.notes }) : null,
+        icon("info", 15),
+        el("div", {},
+          el("strong", { text: a.event.event }),
+          a.event.notes ? el("span", { text: a.event.notes }) : null),
       ) : null,
     );
 
@@ -402,12 +472,12 @@
       : 0;
 
     const market = el("section", { class: "detail-section" },
-      el("h3", { text: "Market data" }),
+      el("h3", {}, icon("chart", 14), "Market data"),
       el("dl", { class: "metrics" },
         metric("Close", fmtPrice.format(a.close)),
-        metric("Daily return", pct(simpleReturn(a.log_return))),
+        metric("Daily return", pct(simpleReturn(a.log_return)), { cls: signClass(a.log_return) }),
         metric("Return z-score", signed(a.return_zscore), { sub: "vs. 20-day mean" }),
-        metric("60-day return", pct(a.return_60d)),
+        metric("60-day return", pct(a.return_60d), { cls: signClass(a.return_60d) }),
         metric("Shock models", `${a.shock_votes} of ${n}`, { extra: pips(a.shock_votes, n) }),
         metric("Regime models", `${a.regime_votes} of ${n}`, { extra: pips(a.regime_votes, n) }),
         a.regime_episode_start ? metric("Regime episode",
@@ -435,7 +505,7 @@
     const error = state.errors.get(a.date);
     const problem = serviceProblem();
     const section = el("section", { class: "detail-section explanation" });
-    const heading = el("div", { class: "section-head" }, el("h3", { text: "Explanation" }));
+    const heading = el("div", { class: "section-head" }, el("h3", {}, icon("doc", 14), "Explanation"));
     section.append(heading);
 
     if (busy) {
@@ -456,7 +526,7 @@
           type: "button", class: "btn btn-ghost",
           title: own ? "Generate a fresh explanation for this day" : "Generate an explanation for this day on its own",
           onclick: () => generateExplanation(a.date, { force: own }),
-        }, own ? "Regenerate" : "Explain this day"));
+        }, icon(own ? "refresh" : "sparkles", 13), own ? "Regenerate" : "Explain this day"));
       }
       if (!own) {
         section.append(el("p", { class: "callout shared-note",
@@ -467,24 +537,25 @@
       return section;
     }
 
-    section.append(el("p", { class: "explain-intro",
-      text: "No explanation has been generated for this day yet. The explainer retrieves SEBI filings and Business Standard coverage dated near this day, plus Wikipedia background, and asks the language model to explain the anomaly using only that material." }));
-    if (error) section.append(errorCallout(error));
+    const cta = el("div", { class: "explain-cta" },
+      el("p", { class: "explain-intro",
+        text: "No explanation has been generated for this day yet. The explainer retrieves SEBI filings and Business Standard coverage dated near this day, plus Wikipedia background, and asks the language model to explain the anomaly using only that material." }));
+    if (error) cta.append(errorCallout(error));
 
-    const button = el("button", {
+    cta.append(el("button", {
       type: "button", class: "btn btn-primary btn-block",
       disabled: Boolean(problem),
       onclick: () => generateExplanation(a.date),
-    }, error ? "Try again" : "See explanation");
-    section.append(button);
+    }, icon(error ? "refresh" : "sparkles", 16), error ? "Try again" : "See explanation"));
 
     if (problem === "static") {
-      section.append(el("p", { class: "hint" },
+      cta.append(el("p", { class: "hint" },
         "Generating explanations needs the dashboard server. Start it with ",
         el("code", { text: "python backend/src/server.py" }), " and open the address it prints."));
     } else if (problem === "config") {
-      section.append(el("p", { class: "hint", text: state.service.problems.join(" ") }));
+      cta.append(el("p", { class: "hint", text: state.service.problems.join(" ") }));
     }
+    section.append(cta);
     return section;
   }
 
@@ -671,14 +742,22 @@
         {
           id: "price", name: "Close", type: "line", data: state.prices,
           showSymbol: false, symbol: "none", sampling: "lttb",
-          lineStyle: { width: 1.5, color: c.price }, itemStyle: { color: c.price },
+          lineStyle: { width: 1.6, color: c.price }, itemStyle: { color: c.price },
+          areaStyle: {
+            origin: "start",
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: withAlpha(c.price, 0.16) },
+              { offset: 1, color: withAlpha(c.price, 0) },
+            ]),
+          },
           emphasis: { disabled: true }, z: 2,
           markArea: { silent: true, itemStyle: { color: c.band }, data: episodes },
         },
         ...TYPE_ORDER.map((t) => ({
           id: t, name: TYPES[t].label, type: "scatter", data: markerData(t),
-          symbol: TYPES[t].symbol, symbolSize: t === "regime" ? 8 : 9,
-          itemStyle: { color: c[t], borderColor: c.surface, borderWidth: 1.5 },
+          symbol: TYPES[t].symbol, symbolSize: t === "regime" ? 9 : 10,
+          itemStyle: { color: c[t], borderColor: c.surface, borderWidth: 1.5,
+                       shadowColor: "rgba(15, 31, 61, 0.18)", shadowBlur: 3 },
           emphasis: { scale: 1.4 }, cursor: "pointer", z: 3,
         })),
         {
@@ -822,6 +901,21 @@
     return res.json();
   }
 
+  /** Live data from server.py; the static export only when no server API exists
+   *  (network error, or a plain static host's non-JSON 404). Any error the API
+   *  itself reports is surfaced instead of hidden behind stale static data. */
+  async function loadData() {
+    const res = await fetch(API_DATA_URL, { cache: "no-store" }).catch(() => null);
+    const isJson = res && (res.headers.get("Content-Type") || "").includes("application/json");
+    if (res && isJson) {
+      const payload = await res.json().catch((err) => { throw new Error(`The server's data could not be read: ${err.message}`); });
+      if (!res.ok) throw new Error(payload.error || `${API_DATA_URL} returned HTTP ${res.status}.`);
+      state.canExplain = Boolean(payload.can_explain);
+      return payload;
+    }
+    return fetchJson(STATIC_DATA_URL);
+  }
+
   async function main() {
     if (typeof echarts === "undefined") {
       showError("The charting library (ECharts) failed to load. Check your internet connection.");
@@ -829,15 +923,10 @@
     }
     let data;
     try {
-      data = await fetchJson(API_DATA_URL);
-      state.canExplain = Boolean(data.can_explain);
-    } catch {
-      try {
-        data = await fetchJson(STATIC_DATA_URL);
-      } catch (err) {
-        showError(err.message || String(err));
-        return;
-      }
+      data = await loadData();
+    } catch (err) {
+      showError(err.message || String(err));
+      return;
     }
     if (state.canExplain) {
       state.service = await fetchJson("api/status").catch(() => null);
@@ -855,6 +944,7 @@
     renderTable();
     renderDetail();
     syncTableSelection(true);
+    document.body.classList.remove("is-loading");
   }
 
   main();

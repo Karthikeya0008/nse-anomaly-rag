@@ -1,0 +1,305 @@
+[
+  {
+    "date": "2018-10-05",
+    "sector": "NIFTY50",
+    "anomaly_type": "both",
+    "log_return": -0.0270435352713576,
+    "return_zscore": -1.9680236877066053,
+    "chunks_per_source": {
+      "sebi": 2,
+      "business_standard": 0,
+      "wikipedia": 2
+    },
+    "context_titles": [
+      "Participation of Eligible Foreign Entities (EFEs) in the commodity derivatives market",
+      "Participation of Eligible Foreign Entities (EFEs) in the commodity derivatives market",
+      "COVID-19 pandemic in India",
+      "2020 stock market crash"
+    ],
+    "context_urls": [
+      "https://www.sebi.gov.in/legal/circulars/oct-2018/participation-of-eligible-foreign-entities-efes-in-the-commodity-derivatives-market_40649.html",
+      "https://www.sebi.gov.in/legal/circulars/oct-2018/participation-of-eligible-foreign-entities-efes-in-the-commodity-derivatives-market_40649.html",
+      "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India",
+      "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+    ],
+    "context": [
+      {
+        "source": "sebi",
+        "date": "2018-10-09",
+        "title": "Participation of Eligible Foreign Entities (EFEs) in the commodity derivatives market",
+        "url": "https://www.sebi.gov.in/legal/circulars/oct-2018/participation-of-eligible-foreign-entities-efes-in-the-commodity-derivatives-market_40649.html"
+      },
+      {
+        "source": "sebi",
+        "date": "2018-10-09",
+        "title": "Participation of Eligible Foreign Entities (EFEs) in the commodity derivatives market",
+        "url": "https://www.sebi.gov.in/legal/circulars/oct-2018/participation-of-eligible-foreign-entities-efes-in-the-commodity-derivatives-market_40649.html"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-01-30",
+        "title": "COVID-19 pandemic in India",
+        "url": "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-03-01",
+        "title": "2020 stock market crash",
+        "url": "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+      }
+    ],
+    "explanation": "**Likely Cause:** The retrieved context does not provide direct news or regulatory explanations for the sharp decline (-2.70%) in the NIFTY50 index on October 5, 2018. While a SEBI circular was issued a few days later on October 9, 2018, regarding commodity derivatives, there is no clear evidence in the text connecting it to the equity index drop on October 5.\n\n**Supporting Evidence:** No retrieved item clearly supports a cause for the market shock on October 5, 2018. The retrieved Regulatory Filings (SEBI, 2018-10-09) focus on allowing Eligible Foreign Entities to participate in Indian commodity derivatives, and the retrieved Background Reference (Wikipedia) relates exclusively to the March 2020 COVID-19 market crash. No relevant news coverage was found for this date.\n\n**Confidence:** Low\n\n**Caveats:** The analysis is limited by the absence of contemporary news coverage or market commentaries in the provided context for October 5, 2018. Extrapolating a macroeconomic cause (such as broader 2018 market liquidity pressures) without explicit text support would require speculating outside the provided context."
+  },
+  {
+    "date": "2020-03-12",
+    "sector": "NIFTY50",
+    "anomaly_type": "both",
+    "log_return": -0.0866689531994765,
+    "return_zscore": -3.189125929132835,
+    "chunks_per_source": {
+      "sebi": 2,
+      "business_standard": 0,
+      "wikipedia": 2
+    },
+    "context_titles": [
+      "Amendment in ‘Rights and Obligations of Members, Authorized Persons and Clients’ of FMC Circular No. FMC/COMPL/IV/KRA-05/11/14 dated February 26, 2015.",
+      "General Information Document",
+      "COVID-19 pandemic in India",
+      "2020 stock market crash"
+    ],
+    "context_urls": [
+      "https://www.sebi.gov.in/legal/circulars/mar-2020/amendment-in-rights-and-obligations-of-members-authorized-persons-and-clients-of-fmc-circular-no-fmc-compl-iv-kra-05-11-14-dated-february-26-2015-_46284.html",
+      "https://www.sebi.gov.in/legal/circulars/mar-2020/general-information-document_46341.html",
+      "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India",
+      "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+    ],
+    "context": [
+      {
+        "source": "sebi",
+        "date": "2020-03-11",
+        "title": "Amendment in ‘Rights and Obligations of Members, Authorized Persons and Clients’ of FMC Circular No. FMC/COMPL/IV/KRA-05/11/14 dated February 26, 2015.",
+        "url": "https://www.sebi.gov.in/legal/circulars/mar-2020/amendment-in-rights-and-obligations-of-members-authorized-persons-and-clients-of-fmc-circular-no-fmc-compl-iv-kra-05-11-14-dated-february-26-2015-_46284.html"
+      },
+      {
+        "source": "sebi",
+        "date": "2020-03-17",
+        "title": "General Information Document",
+        "url": "https://www.sebi.gov.in/legal/circulars/mar-2020/general-information-document_46341.html"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-01-30",
+        "title": "COVID-19 pandemic in India",
+        "url": "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-03-01",
+        "title": "2020 stock market crash",
+        "url": "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+      }
+    ],
+    "explanation": "**Likely Cause:** \nThe sharp market crash on 2020-03-12 and the broader multi-month period of extreme market stress were driven by global financial panic following the World Health Organization's (WHO) declaration of the COVID-19 outbreak as a global pandemic.\n\n**Supporting Evidence:** \n- **Background Reference (2020-01-30):** Notes that on 12 March 2020, Indian stock markets suffered a major crash following the WHO's declaration of the outbreak as a pandemic.\n- **Primary Evidence:** No news coverage was retrieved for this date, and the retrieved SEBI Regulatory Filings (dated 2020-03-11 regarding client obligations and 2020-03-17 regarding General Information Documents) are routine administrative updates that do not explain the market drop.\n\n**Confidence:** Low to Medium. While the Background Reference explicitly references the WHO announcement on 2020-03-12, there are no retrieved primary news items or relevant regulatory filings to directly corroborate the market movements of that specific day.\n\n**Caveats:** \nThe retrieved primary context (Regulatory Filings and News Coverage) does not contain explicit daily market commentary or evidence explaining the crash. The explanation relies entirely on general Background Reference details regarding the COVID-19 pandemic declaration."
+  },
+  {
+    "date": "2024-07-18",
+    "sector": "NIFTY50",
+    "anomaly_type": "regime",
+    "log_return": 0.0076031681375885,
+    "return_zscore": 1.299230261448382,
+    "chunks_per_source": {
+      "sebi": 2,
+      "business_standard": 2,
+      "wikipedia": 2
+    },
+    "context_titles": [
+      "Enabling Credit Rating Agencies (CRAs) to undertake rating activities under IFSCA",
+      "Enabling ESG Rating Providers (ERPs) to undertake ESG rating activities under IFSCA",
+      "Domestic brokerage Prabhudas Lilladher ups Nifty target to 26,398",
+      "Realty indexation benefit gone, tax rate cut in Budget 2024. Stock strategy",
+      "COVID-19 pandemic in India",
+      "2020 stock market crash"
+    ],
+    "context_urls": [
+      "https://www.sebi.gov.in/legal/circulars/jul-2024/enabling-credit-rating-agencies-cras-to-undertake-rating-activities-under-ifsca_84849.html",
+      "https://www.sebi.gov.in/legal/circulars/jul-2024/enabling-esg-rating-providers-erps-to-undertake-esg-rating-activities-under-ifsca_84851.html",
+      "https://www.business-standard.com/markets/news/domestic-brokerage-prabhudas-lilladher-ups-nifty-target-to-26-398-124071800879_1.html",
+      "https://www.business-standard.com/markets/news/realty-indexation-benefit-gone-tax-rate-cut-in-budget-2024-stock-strategy-124072300714_1.html",
+      "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India",
+      "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+    ],
+    "context": [
+      {
+        "source": "sebi",
+        "date": "2024-07-19",
+        "title": "Enabling Credit Rating Agencies (CRAs) to undertake rating activities under IFSCA",
+        "url": "https://www.sebi.gov.in/legal/circulars/jul-2024/enabling-credit-rating-agencies-cras-to-undertake-rating-activities-under-ifsca_84849.html"
+      },
+      {
+        "source": "sebi",
+        "date": "2024-07-19",
+        "title": "Enabling ESG Rating Providers (ERPs) to undertake ESG rating activities under IFSCA",
+        "url": "https://www.sebi.gov.in/legal/circulars/jul-2024/enabling-esg-rating-providers-erps-to-undertake-esg-rating-activities-under-ifsca_84851.html"
+      },
+      {
+        "source": "business_standard",
+        "date": "2024-07-18",
+        "title": "Domestic brokerage Prabhudas Lilladher ups Nifty target to 26,398",
+        "url": "https://www.business-standard.com/markets/news/domestic-brokerage-prabhudas-lilladher-ups-nifty-target-to-26-398-124071800879_1.html"
+      },
+      {
+        "source": "business_standard",
+        "date": "2024-07-23",
+        "title": "Realty indexation benefit gone, tax rate cut in Budget 2024. Stock strategy",
+        "url": "https://www.business-standard.com/markets/news/realty-indexation-benefit-gone-tax-rate-cut-in-budget-2024-stock-strategy-124072300714_1.html"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-01-30",
+        "title": "COVID-19 pandemic in India",
+        "url": "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-03-01",
+        "title": "2020 stock market crash",
+        "url": "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+      }
+    ],
+    "explanation": "**Likely Cause:** \nThe regime anomaly reflects a period of sustained bullish market momentum pushing the NIFTY50 to record high levels near 24,800, driven by strong earnings expectations and positive domestic market sentiment leading up to the Union Budget.\n\n**Supporting Evidence:** \n* News Coverage (Business Standard, 2024-07-18): Reports that domestic brokerage Prabhudas Lilladher raised its 12-month target for the NIFTY50 to 26,398 based on strong earnings expectations (March 2026 EPS of Rs 1,417), noting the index closed at a high of 24,801.\n* News Coverage (Business Standard, 2024-07-23): Contextualizes market expectations and sector positioning surrounding the upcoming India Budget 2024.\n\n**Confidence:** Medium  \n*Explanation:* The retrieved news directly documents the elevated market valuations and bullish sentiment surrounding this multi-week high, but the context provides limited granular macroeconomic data for the entire multi-week period.\n\n**Caveats:** \n* The SEBI regulatory filings regarding IFSCA guidelines for credit and ESG rating agencies are administrative updates and do not explain index price/volatility regimes.\n* The analysis relies on brokerage target context and budget-related news coverage to infer the broader regime drivers, as comprehensive multi-week macroeconomic data is not present in the retrieved context."
+  },
+  {
+    "date": "2025-04-07",
+    "sector": "NIFTY50",
+    "anomaly_type": "shock",
+    "log_return": -0.0329701533873052,
+    "return_zscore": -2.905024948933923,
+    "chunks_per_source": {
+      "sebi": 2,
+      "business_standard": 2,
+      "wikipedia": 2
+    },
+    "context_titles": [
+      "Specialized Investment Funds (‘SIF’) – Application and Investment  Strategy Information Document (ISID) formats",
+      "Specialized Investment Funds (‘SIF’) – Application and Investment  Strategy Information Document (ISID) formats",
+      "Will Nifty follow history and crash below the 20,000-mark? Details here",
+      "Will Nifty follow history and crash below the 20,000-mark? Details here",
+      "COVID-19 pandemic in India",
+      "2020 stock market crash"
+    ],
+    "context_urls": [
+      "https://www.sebi.gov.in/legal/circulars/apr-2025/specialized-investment-funds-sif-application-and-investment-strategy-information-document-isid-formats_93442.html",
+      "https://www.sebi.gov.in/legal/circulars/apr-2025/specialized-investment-funds-sif-application-and-investment-strategy-information-document-isid-formats_93442.html",
+      "https://www.business-standard.com/markets/news/will-nifty-follow-history-and-crash-below-the-20-000-mark-details-here-125040800296_1.html",
+      "https://www.business-standard.com/markets/news/will-nifty-follow-history-and-crash-below-the-20-000-mark-details-here-125040800296_1.html",
+      "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India",
+      "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+    ],
+    "context": [
+      {
+        "source": "sebi",
+        "date": "2025-04-11",
+        "title": "Specialized Investment Funds (‘SIF’) – Application and Investment  Strategy Information Document (ISID) formats",
+        "url": "https://www.sebi.gov.in/legal/circulars/apr-2025/specialized-investment-funds-sif-application-and-investment-strategy-information-document-isid-formats_93442.html"
+      },
+      {
+        "source": "sebi",
+        "date": "2025-04-11",
+        "title": "Specialized Investment Funds (‘SIF’) – Application and Investment  Strategy Information Document (ISID) formats",
+        "url": "https://www.sebi.gov.in/legal/circulars/apr-2025/specialized-investment-funds-sif-application-and-investment-strategy-information-document-isid-formats_93442.html"
+      },
+      {
+        "source": "business_standard",
+        "date": "2025-04-08",
+        "title": "Will Nifty follow history and crash below the 20,000-mark? Details here",
+        "url": "https://www.business-standard.com/markets/news/will-nifty-follow-history-and-crash-below-the-20-000-mark-details-here-125040800296_1.html"
+      },
+      {
+        "source": "business_standard",
+        "date": "2025-04-08",
+        "title": "Will Nifty follow history and crash below the 20,000-mark? Details here",
+        "url": "https://www.business-standard.com/markets/news/will-nifty-follow-history-and-crash-below-the-20-000-mark-details-here-125040800296_1.html"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-01-30",
+        "title": "COVID-19 pandemic in India",
+        "url": "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-03-01",
+        "title": "2020 stock market crash",
+        "url": "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+      }
+    ],
+    "explanation": "**Likely Cause:** \nThe sharp market sell-off on April 7, 2025, was primarily driven by negative global sentiment and market reactions following trade tariffs imposed by US President Donald Trump.\n\n**Supporting Evidence:** \n- **News Coverage (Business Standard, 2025-04-08):** \"Will Nifty follow history and crash below the 20,000-mark? Details here\" cites \"the market sell-off on account of the tariffs imposed by US President Donald Trump\" and notes that \"the current market dip is more to do with overall global sentiment.\"\n\n**Confidence:** \nMedium. The retrieved news context directly links the sharp market dip to US tariffs and global sell-off sentiment, though the article is dated the day after (April 8, 2025) reflecting on the recent fall rather than giving specific single-day trading minute details for April 7.\n\n**Caveats:** \n- The retrieved context does not provide specific intraday trading metrics or specific company news for April 7, 2025.\n- The SEBI regulatory filings retrieved are dated April 11, 2025, regarding Specialized Investment Funds (SIF) and offer no relevance to the April 7 market shock.\n- The Wikipedia background references describe the 2020 COVID-19 stock market crash and are unrelated to the 2025 event."
+  },
+  {
+    "date": "2026-02-03",
+    "sector": "NIFTY50",
+    "anomaly_type": "shock",
+    "log_return": 0.0251568142535042,
+    "return_zscore": 2.729472821913729,
+    "chunks_per_source": {
+      "sebi": 2,
+      "business_standard": 2,
+      "wikipedia": 2
+    },
+    "context_titles": [
+      "Review of Calendar Spread margin benefit in Single stock derivatives on expiry day",
+      "Revision of Order-to-Trade Ratio (OTR) framework",
+      "From Bernstein to Nomura: Brokerages give thumbs up to India-US trade deal",
+      "Stock Market Close: Nifty logs worst month since Feb 2025; Sensex down 297 pts today; Metals plunge",
+      "COVID-19 pandemic in India",
+      "2020 stock market crash"
+    ],
+    "context_urls": [
+      "https://www.sebi.gov.in/legal/circulars/feb-2026/review-of-calendar-spread-margin-benefit-in-single-stock-derivatives-on-expiry-day_99533.html",
+      "https://www.sebi.gov.in/legal/circulars/feb-2026/revision-of-order-to-trade-ratio-otr-framework_99501.html",
+      "https://www.business-standard.com/markets/news/from-bernstein-to-nomura-brokerages-give-thumbs-up-to-india-us-trade-deal-126020300950_1.html",
+      "https://www.business-standard.com/markets/news/stock-market-live-january-30-nse-bse-sensex-nifty-gift-nifty-q3-results-budget-2026-share-market-today-126013000088_1.html",
+      "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India",
+      "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+    ],
+    "context": [
+      {
+        "source": "sebi",
+        "date": "2026-02-05",
+        "title": "Review of Calendar Spread margin benefit in Single stock derivatives on expiry day",
+        "url": "https://www.sebi.gov.in/legal/circulars/feb-2026/review-of-calendar-spread-margin-benefit-in-single-stock-derivatives-on-expiry-day_99533.html"
+      },
+      {
+        "source": "sebi",
+        "date": "2026-02-04",
+        "title": "Revision of Order-to-Trade Ratio (OTR) framework",
+        "url": "https://www.sebi.gov.in/legal/circulars/feb-2026/revision-of-order-to-trade-ratio-otr-framework_99501.html"
+      },
+      {
+        "source": "business_standard",
+        "date": "2026-02-03",
+        "title": "From Bernstein to Nomura: Brokerages give thumbs up to India-US trade deal",
+        "url": "https://www.business-standard.com/markets/news/from-bernstein-to-nomura-brokerages-give-thumbs-up-to-india-us-trade-deal-126020300950_1.html"
+      },
+      {
+        "source": "business_standard",
+        "date": "2026-01-30",
+        "title": "Stock Market Close: Nifty logs worst month since Feb 2025; Sensex down 297 pts today; Metals plunge",
+        "url": "https://www.business-standard.com/markets/news/stock-market-live-january-30-nse-bse-sensex-nifty-gift-nifty-q3-results-budget-2026-share-market-today-126013000088_1.html"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-01-30",
+        "title": "COVID-19 pandemic in India",
+        "url": "https://en.wikipedia.org/wiki/COVID-19_pandemic_in_India"
+      },
+      {
+        "source": "wikipedia",
+        "date": "2020-03-01",
+        "title": "2020 stock market crash",
+        "url": "https://en.wikipedia.org/wiki/2020_stock_market_crash"
+      }
+    ],
+    "explanation": "**Likely Cause:** \nThe market surge on February 3, 2026, was primarily driven by strong positive sentiment and upgrades from major brokerages following an India-US trade deal, which investors expected would boost GDP growth and reverse foreign portfolio investor (FPI) equity outflows.\n\n**Supporting Evidence:** \n- News (Business Standard, 2026-02-03): \"From Bernstein to Nomura: Brokerages give thumbs up to India-US trade deal\" reports that brokerages viewed the development as \"significantly positive for Indian equities,\" citing expectations that FPI equity outflows would reverse and nominal GDP growth would be supported by 50–80 bps.\n\n**Confidence:** \nHigh. The retrieved news article from the exact date of the anomaly directly attributes the strong market sentiment to brokerage optimism over the India-US trade deal.\n\n**Caveats:** \nThe retrieved text provides brokerage commentary on the India-US trade deal, but it does not detail intraday price action, trading volumes, or the specific timing of the underlying trade deal's release relative to market hours."
+  }
+]

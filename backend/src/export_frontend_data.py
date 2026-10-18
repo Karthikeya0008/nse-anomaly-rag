@@ -91,8 +91,11 @@ def build(sector: str) -> dict:
     for r in records:
         r["near_rebalancing"] = str(r["near_rebalancing"]) == "True"
         r["event"] = events.get(r["date"])
-        for k in ("regime_episode_start", "regime_episode_end", "rebalancing_notes"):
-            r[k] = r[k] or None
+        # Empty strings -> null; also catches the NaN pandas puts in explanation_date
+        # once some (but not all) days have an explanation -- NaN is not valid JSON.
+        for k in ("regime_episode_start", "regime_episode_end", "rebalancing_notes",
+                  "explanation_date"):
+            r[k] = r[k] if isinstance(r[k], str) and r[k] else None
 
     return {
         "sector": sector,
@@ -117,7 +120,7 @@ if __name__ == "__main__":
     data = build(SECTOR)
     out_path = FRONTEND_DATA_DIR / f"{SECTOR}.json"
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+        json.dump(data, f, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
     n_explained = sum(1 for a in data["anomalies"] if a["explanation_date"])
     print(f"{SECTOR}: {len(data['prices']['date'])} days, {len(data['anomalies'])} anomalies, "

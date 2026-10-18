@@ -4,7 +4,7 @@
     {
       "name": "frontend",
       "runtimeExecutable": "backend/.venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "frontend"],
+      "runtimeArgs": ["backend/src/server.py", "--port", "8765"],
       "port": 8765
     }
   ]
