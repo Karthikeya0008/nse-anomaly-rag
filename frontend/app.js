@@ -1,7 +1,10 @@
 (() => {
   "use strict";
 
-  const DATA_URL = "data/NIFTY50.json";
+  // Served live by backend/src/server.py; the static file is the fallback when
+  // the page is hosted without the server (then explanations can't be generated).
+  const API_DATA_URL = "api/data?sector=NIFTY50";
+  const STATIC_DATA_URL = "data/NIFTY50.json";
 
   const TYPES = {
     shock:  { label: "Shock",          symbol: "circle",  cssVar: "--shock",  note: "single-day extremes" },
@@ -32,6 +35,10 @@
     chart: null,
     colors: null,
     applyingRange: false,
+    canExplain: false,     // true when served by server.py
+    service: null,         // /api/status response
+    generating: new Set(), // dates with a request in flight
+    errors: new Map(),     // date -> last error message
   };
 
   // ---------------------------------------------------------------------------
@@ -220,8 +227,8 @@
   // ---------------------------------------------------------------------------
   function explanationStatus(a) {
     if (hasExplanation(a)) return { text: "Available", cls: "status-yes" };
-    if (a.date < state.data.explain_from) return { text: "Not in scope", cls: "status-no" };
-    return { text: "Pending", cls: "status-no" };
+    if (state.generating.has(a.date)) return { text: "Generating…", cls: "status-busy" };
+    return { text: "Not generated", cls: "status-no" };
   }
 
   function agreementText(a) {
@@ -413,33 +420,146 @@
     );
 
     const exp = hasExplanation(a) ? state.data.explanations[a.explanation_date] : null;
-    let explanation;
-    if (exp) {
-      explanation = el("section", { class: "detail-section explanation" },
-        el("h3", { text: "Explanation" }),
-        a.explanation_date !== a.date ? el("p", { class: "callout shared-note",
-          text: `This regime day shares the explanation generated for ${longDate(a.explanation_date)}, the strongest day of the same episode.` }) : null,
-        explanationBody(exp.explanation || ""),
-      );
-    } else if (a.date < state.data.explain_from) {
-      explanation = el("section", { class: "detail-section" },
-        el("h3", { text: "Explanation" }),
-        el("p", { class: "callout" },
-          `Explanations are generated for anomalies from ${longDate(state.data.explain_from)} onward, so this day has none. `,
-          "To include it, lower ", el("code", { text: "MIN_ANOMALY_DATE" }), " in ", el("code", { text: "explain_anomalies.py" }), "."),
-      );
-    } else {
-      explanation = el("section", { class: "detail-section" },
-        el("h3", { text: "Explanation" }),
-        el("p", { class: "callout" },
-          "No explanation has been generated for this day yet. Run ",
-          el("code", { text: "rag/explain_anomalies.py" }), ", then ", el("code", { text: "export_frontend_data.py" }),
-          ", and reload this page."),
-      );
+    panel.replaceChildren(...[head, market, explanationSection(a, exp), exp && sourcesSection(exp)].filter(Boolean));
+    panel.scrollTop = 0;
+  }
+
+  function serviceProblem() {
+    if (!state.canExplain) return "static";
+    if (state.service && !state.service.ready) return "config";
+    return null;
+  }
+
+  function explanationSection(a, exp) {
+    const busy = state.generating.has(a.date);
+    const error = state.errors.get(a.date);
+    const problem = serviceProblem();
+    const section = el("section", { class: "detail-section explanation" });
+    const heading = el("div", { class: "section-head" }, el("h3", { text: "Explanation" }));
+    section.append(heading);
+
+    if (busy) {
+      section.append(el("div", { class: "generating", role: "status" },
+        el("span", { class: "spinner", "aria-hidden": "true" }),
+        el("div", {},
+          el("strong", { text: "Generating explanation…" }),
+          el("span", { text: "Retrieving SEBI filings, news and background for this date, then asking the language model. This usually takes 10–30 seconds." }),
+        ),
+      ));
+      return section;
     }
 
-    panel.replaceChildren(...[head, market, explanation, exp && sourcesSection(exp)].filter(Boolean));
-    panel.scrollTop = 0;
+    if (exp) {
+      const own = a.explanation_date === a.date;
+      if (!problem) {
+        heading.append(el("button", {
+          type: "button", class: "btn btn-ghost",
+          title: own ? "Generate a fresh explanation for this day" : "Generate an explanation for this day on its own",
+          onclick: () => generateExplanation(a.date, { force: own }),
+        }, own ? "Regenerate" : "Explain this day"));
+      }
+      if (!own) {
+        section.append(el("p", { class: "callout shared-note",
+          text: `This regime day shares the explanation generated for ${longDate(a.explanation_date)}, another day of the same episode.` }));
+      }
+      if (error) section.append(errorCallout(error));
+      section.append(explanationBody(exp.explanation || ""));
+      return section;
+    }
+
+    section.append(el("p", { class: "explain-intro",
+      text: "No explanation has been generated for this day yet. The explainer retrieves SEBI filings and Business Standard coverage dated near this day, plus Wikipedia background, and asks the language model to explain the anomaly using only that material." }));
+    if (error) section.append(errorCallout(error));
+
+    const button = el("button", {
+      type: "button", class: "btn btn-primary btn-block",
+      disabled: Boolean(problem),
+      onclick: () => generateExplanation(a.date),
+    }, error ? "Try again" : "See explanation");
+    section.append(button);
+
+    if (problem === "static") {
+      section.append(el("p", { class: "hint" },
+        "Generating explanations needs the dashboard server. Start it with ",
+        el("code", { text: "python backend/src/server.py" }), " and open the address it prints."));
+    } else if (problem === "config") {
+      section.append(el("p", { class: "hint", text: state.service.problems.join(" ") }));
+    }
+    return section;
+  }
+
+  function errorCallout(message) {
+    return el("p", { class: "callout callout-error", role: "alert" },
+      el("strong", { text: "Could not generate the explanation. " }), message);
+  }
+
+  /** Which explanation each anomaly shows -- mirrors export_frontend_data.explanation_date. */
+  function assignExplanationDates() {
+    const explanations = state.data.explanations;
+    const episodeExplained = new Map();
+    for (const a of state.anomalies) {
+      if (a.anomaly_type === "regime" && explanations[a.date]) episodeExplained.set(a.regime_episode_start, a.date);
+    }
+    for (const a of state.anomalies) {
+      a.explanation_date = explanations[a.date] ? a.date
+        : a.anomaly_type === "regime" ? episodeExplained.get(a.regime_episode_start) || null
+        : null;
+    }
+  }
+
+  async function generateExplanation(date, { force = false } = {}) {
+    if (state.generating.has(date)) return;
+    state.generating.add(date);
+    state.errors.delete(date);
+    refreshExplanationViews(date);
+
+    try {
+      const res = await fetch("api/explain?sector=" + encodeURIComponent(state.data.sector), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, force }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `The server returned HTTP ${res.status}.`);
+      state.data.explanations[payload.date] = payload.explanation;
+      assignExplanationDates();
+    } catch (err) {
+      state.errors.set(date, err.message || String(err));
+    } finally {
+      state.generating.delete(date);
+      refreshExplanationViews(date);
+    }
+  }
+
+  function refreshExplanationViews(date) {
+    renderStats();
+    renderTable();
+    if (state.explainedOnly) updateMarkers();
+    // Re-render the panel only if it shows this day or shares its regime episode,
+    // so a reader on another day doesn't lose their scroll position.
+    const sel = state.byDate.get(state.selected);
+    const gen = state.byDate.get(date);
+    if (sel && (sel.date === date ||
+        (sel.regime_episode_start && sel.regime_episode_start === gen?.regime_episode_start))) {
+      renderDetail();
+    }
+  }
+
+  function renderServiceStatus() {
+    let tone, label, title;
+    if (!state.canExplain) {
+      tone = "off"; label = "Static mode · explanations read-only";
+      title = "Opened without server.py, so new explanations can't be generated.";
+    } else if (!state.service) {
+      tone = "off"; label = "Explanation service unreachable"; title = "";
+    } else if (state.service.ready) {
+      tone = "ok"; label = `Explanation service ready · ${state.service.model}`; title = "";
+    } else {
+      tone = "warn"; label = "Explanation service not configured"; title = state.service.problems.join(" ");
+    }
+    $("service-status").replaceChildren(
+      el("span", { class: `status-pill status-${tone}`, title: title || null },
+        el("span", { class: "status-dot", "aria-hidden": "true" }), label));
   }
 
   function selectDay(date, { scrollRow = true } = {}) {
@@ -620,9 +740,6 @@
     });
 
     new ResizeObserver(() => chart.resize()).observe($("chart"));
-
-    const dark = window.matchMedia("(prefers-color-scheme: dark)");
-    dark.addEventListener("change", () => chart.setOption(buildOption(), { notMerge: true }));
   }
 
   function updateMarkers() {
@@ -692,11 +809,17 @@
     const box = el("div", { class: "load-error" },
       el("strong", { text: "The dashboard could not load its data." }),
       el("p", { text: message }),
-      el("p", {}, "Generate it with ", el("code", { text: "python backend/src/export_frontend_data.py" }),
-        " and serve this folder over HTTP, for example ", el("code", { text: "python -m http.server 8000" }),
-        " from inside ", el("code", { text: "frontend/" }), "."),
+      el("p", {}, "Start the dashboard server with ", el("code", { text: "python backend/src/server.py" }),
+        " and open the address it prints. It needs ", el("code", { text: "db/processed/NIFTY50_final_anomalies.csv" }),
+        ", produced by ", el("code", { text: "train_multi_model.py" }), " and ", el("code", { text: "build_final_anomalies.py" }), "."),
     );
     document.querySelector(".layout").replaceWith(box);
+  }
+
+  async function fetchJson(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}.`);
+    return res.json();
   }
 
   async function main() {
@@ -706,15 +829,22 @@
     }
     let data;
     try {
-      const res = await fetch(DATA_URL, { cache: "no-cache" });
-      if (!res.ok) throw new Error(`${DATA_URL} returned HTTP ${res.status}.`);
-      data = await res.json();
-    } catch (err) {
-      showError(err.message || String(err));
-      return;
+      data = await fetchJson(API_DATA_URL);
+      state.canExplain = Boolean(data.can_explain);
+    } catch {
+      try {
+        data = await fetchJson(STATIC_DATA_URL);
+      } catch (err) {
+        showError(err.message || String(err));
+        return;
+      }
+    }
+    if (state.canExplain) {
+      state.service = await fetchJson("api/status").catch(() => null);
     }
 
     prepare(data);
+    renderServiceStatus();
     renderProvenance();
     renderLegend();
     renderTypeFilters();

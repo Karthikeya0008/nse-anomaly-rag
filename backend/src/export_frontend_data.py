@@ -8,6 +8,9 @@ Reads:
 Writes:
     frontend/data/<SECTOR>.json
 
+server.py serves the same bundle live from /api/data, so this file is only
+needed when the page is opened without the server (plain static hosting).
+
 Usage:
     python export_frontend_data.py            # NIFTY50
     python export_frontend_data.py NIFTYBANK
@@ -25,9 +28,15 @@ EXPLANATIONS_DIR = PROJECT_ROOT / "db" / "explanations"
 EVENTS_DIR = PROJECT_ROOT / "db" / "events"
 FRONTEND_DATA_DIR = PROJECT_ROOT / "frontend" / "data"
 
-# Must match MIN_ANOMALY_DATE in rag/explain_anomalies.py: the page uses it to say
-# why an older anomaly has no explanation.
-EXPLAIN_FROM = "2023-01-01"
+
+def format_explanation(entry: dict) -> dict:
+    """The parts of an explain_anomalies.py entry the page shows."""
+    context = entry.get("context") or [{"title": t} for t in entry.get("context_titles", [])]
+    return {
+        "explanation": entry.get("explanation", ""),
+        "context": context,
+        "urls": entry.get("context_urls", []),
+    }
 
 
 def load_explanations(sector: str) -> dict:
@@ -36,15 +45,7 @@ def load_explanations(sector: str) -> dict:
         return {}
     with open(path, encoding="utf-8") as f:
         entries = json.load(f)
-    out = {}
-    for e in entries:
-        context = e.get("context") or [{"title": t} for t in e.get("context_titles", [])]
-        out[e["date"]] = {
-            "explanation": e.get("explanation", ""),
-            "context": context,
-            "urls": e.get("context_urls", []),
-        }
-    return out
+    return {e["date"]: format_explanation(e) for e in entries}
 
 
 def explanation_date(row, explanations: dict, episode_explained: dict):
@@ -98,7 +99,6 @@ def build(sector: str) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "ensemble_size": 5,
         "contamination": 0.05,
-        "explain_from": EXPLAIN_FROM,
         "prices": {
             "date": df["date"].tolist(),
             "close": df["close"].round(2).tolist(),

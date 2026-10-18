@@ -2,6 +2,7 @@
 Anomaly Explanation Pipeline (RAG + LLM) -- Balanced Retrieval Version
 """
 
+import argparse
 import json
 import os
 import time
@@ -315,6 +316,101 @@ def explain_anomaly(client, collection, anomaly_row: pd.Series, sector: str) -> 
 
 
 # ============================================================================
+# FILE I/O
+# ============================================================================
+
+def load_final_anomalies(sector: str = SECTOR) -> pd.DataFrame:
+    # Built by models/build_final_anomalies.py from the shock + regime ensembles.
+    anomalies_path = PROCESSED_DIR / f"{sector}_final_anomalies.csv"
+    if not anomalies_path.exists():
+        raise FileNotFoundError(
+            f"Anomaly CSV does not exist:\n{anomalies_path}\n\n"
+            "Run models/train_multi_model.py then models/build_final_anomalies.py first."
+        )
+
+    # FIX: encoding="utf-8-sig" strips a BOM if present, which otherwise
+    # makes pandas read the first column as "﻿date" instead of "date".
+    df = pd.read_csv(anomalies_path, encoding="utf-8-sig", keep_default_na=False)
+
+    missing_columns = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+    if missing_columns:
+        raise ValueError(
+            "CSV is missing required columns: " + ", ".join(missing_columns) +
+            f"\nActual columns present: {list(df.columns)}"
+        )
+    return df
+
+
+def is_flagged(df: pd.DataFrame) -> pd.Series:
+    return df["anomaly"].astype(str).str.strip().str.lower().isin(["true", "1", "yes"])
+
+
+def explanations_path(sector: str = SECTOR) -> Path:
+    return EXPLANATIONS_DIR / f"{sector}_explanations.json"
+
+
+def load_explanations(sector: str = SECTOR) -> dict:
+    """Existing explanations keyed by date."""
+    path = explanations_path(sector)
+    existing = {}
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+            if isinstance(existing_data, list):
+                for entry in existing_data:
+                    if "date" in entry:
+                        try:
+                            existing[normalize_date(entry["date"])] = entry
+                        except ValueError:
+                            continue
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"Warning: could not load existing explanations: {exc}\n")
+    return existing
+
+
+def save_explanations(existing: dict, sector: str = SECTOR) -> Path:
+    EXPLANATIONS_DIR.mkdir(parents=True, exist_ok=True)
+    path = explanations_path(sector)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump([existing[d] for d in sorted(existing)], f, ensure_ascii=False, indent=2)
+    return path
+
+
+# ============================================================================
+# SINGLE DAY (used by the dashboard server and --date)
+# ============================================================================
+
+def explain_date(date: str, sector: str = SECTOR, client=None, collection=None,
+                 force: bool = False) -> dict:
+    """Explain one flagged day and save it alongside the other explanations.
+
+    Unlike run(), this ignores MIN_ANOMALY_DATE and does not collapse regime
+    episodes: whatever flagged day is asked for gets explained. Returns the
+    saved entry (the existing one, unless force=True).
+    """
+    date = normalize_date(date)
+    df = load_final_anomalies(sector)
+    rows = df[df["date"].astype(str) == date]
+    if rows.empty:
+        raise ValueError(f"{date} is not a trading day in the {sector} data.")
+    if not is_flagged(rows).iloc[0]:
+        raise ValueError(f"{date} is not a flagged anomaly for {sector}.")
+
+    existing = load_explanations(sector)
+    if date in existing and not force:
+        return existing[date]
+
+    result = explain_anomaly(client or get_gemini_client(),
+                             collection or get_chroma_collection(),
+                             rows.iloc[0], sector)
+    existing = load_explanations(sector)  # re-read: another run may have saved meanwhile
+    existing[date] = result
+    save_explanations(existing, sector)
+    return result
+
+
+# ============================================================================
 # MAIN PIPELINE
 # ============================================================================
 
@@ -330,34 +426,14 @@ def run():
         raise FileNotFoundError(f"Processed directory does not exist:\n{PROCESSED_DIR}")
     if not VECTORSTORE_DIR.exists():
         raise FileNotFoundError(f"Vectorstore directory does not exist:\n{VECTORSTORE_DIR}\n\nRun ingest_all_to_chroma.py first.")
-    EXPLANATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
     collection = get_chroma_collection()
     client = get_gemini_client()
 
-    # Built by models/build_final_anomalies.py from the shock + regime ensembles.
-    anomalies_path = PROCESSED_DIR / f"{SECTOR}_final_anomalies.csv"
-    if not anomalies_path.exists():
-        raise FileNotFoundError(
-            f"Anomaly CSV does not exist:\n{anomalies_path}\n\n"
-            "Run models/train_multi_model.py then models/build_final_anomalies.py first."
-        )
-
-    # FIX: encoding="utf-8-sig" strips a BOM if present, which otherwise
-    # makes pandas read the first column as "\ufeffdate" instead of "date".
-    df = pd.read_csv(anomalies_path, encoding="utf-8-sig", keep_default_na=False)
-
+    df = load_final_anomalies(SECTOR)
     print(f"Columns found in CSV: {list(df.columns)}\n")
 
-    missing_columns = [c for c in REQUIRED_COLUMNS if c not in df.columns]
-    if missing_columns:
-        raise ValueError(
-            "CSV is missing required columns: " + ", ".join(missing_columns) +
-            f"\nActual columns present: {list(df.columns)}"
-        )
-
-    anomaly_mask = df["anomaly"].astype(str).str.strip().str.lower().isin(["true", "1", "yes"])
-    flagged = df[anomaly_mask].copy()
+    flagged = df[is_flagged(df)].copy()
 
     date_mask = flagged["date"].astype(str) >= MIN_ANOMALY_DATE
     flagged = flagged[date_mask].copy()
@@ -366,27 +442,12 @@ def run():
     flagged = collapse_regime_episodes(flagged)
     print(f"Regime-only days collapsed to one representative day per episode")
 
-    out_path = EXPLANATIONS_DIR / f"{SECTOR}_explanations.json"
-    existing = {}
-    if out_path.exists():
-        try:
-            with open(out_path, "r", encoding="utf-8") as f:
-                existing_data = json.load(f)
-            if isinstance(existing_data, list):
-                for entry in existing_data:
-                    if "date" in entry:
-                        try:
-                            existing[normalize_date(entry["date"])] = entry
-                        except ValueError:
-                            continue
-        except (json.JSONDecodeError, OSError) as exc:
-            print(f"Warning: could not load existing explanations: {exc}\n")
+    existing = load_explanations(SECTOR)
 
     print(f"{len(flagged)} flagged anomalies for {SECTOR} (from {MIN_ANOMALY_DATE})")
     print(f"{len(existing)} already explained")
     print(f"Processing up to {MAX_ANOMALIES_PER_RUN} new anomalies this run.\n")
 
-    results = list(existing.values())
     processed_this_run = 0
 
     for _, row in flagged.iterrows():
@@ -406,7 +467,6 @@ def run():
 
         try:
             result = explain_anomaly(client, collection, row, SECTOR)
-            results.append(result)
             existing[anomaly_date] = result
             processed_this_run += 1
 
@@ -423,17 +483,25 @@ def run():
             time.sleep(DELAY_BETWEEN_CALLS)
         print()
 
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+    out_path = save_explanations(existing, SECTOR)
 
     print("=" * 70)
     print("DONE")
     print("=" * 70)
     print(f"New explanations generated this run: {processed_this_run}")
-    print(f"Total explanations on disk: {len(results)}")
+    print(f"Total explanations on disk: {len(existing)}")
     print(f"Saved to: {out_path.resolve()}")
 
 
 if __name__ == "__main__":
-    run()
-#exit 0
+    parser = argparse.ArgumentParser(description="Generate RAG explanations for flagged anomalies.")
+    parser.add_argument("--date", help="explain only this flagged day (YYYY-MM-DD), any year")
+    parser.add_argument("--force", action="store_true", help="with --date: regenerate even if already explained")
+    args = parser.parse_args()
+
+    if args.date:
+        entry = explain_date(args.date, SECTOR, force=args.force)
+        print(f"{entry['date']} ({entry.get('anomaly_type', '')}):\n{entry['explanation']}")
+        print(f"\nSaved to: {explanations_path(SECTOR).resolve()}")
+    else:
+        run()
