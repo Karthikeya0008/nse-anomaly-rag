@@ -307,6 +307,9 @@ def explain_anomaly(client, collection, anomaly_row: pd.Series, sector: str) -> 
         "chunks_per_source": {src: len(chunks) for src, chunks in context_by_source.items()},
         "context_titles": [c["title"] for c in all_chunks],
         "context_urls": [c["url"] for c in all_chunks if c.get("url")],
+        # Same chunks with source/date/url kept together, for the dashboard.
+        "context": [{k: c.get(k, "") for k in ("source", "date", "title", "url")}
+                    for c in all_chunks],
         "explanation": explanation.strip(),
     }
 

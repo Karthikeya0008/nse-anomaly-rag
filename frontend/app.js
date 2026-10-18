@@ -1,0 +1,731 @@
+(() => {
+  "use strict";
+
+  const DATA_URL = "data/NIFTY50.json";
+
+  const TYPES = {
+    shock:  { label: "Shock",          symbol: "circle",  cssVar: "--shock",  note: "single-day extremes" },
+    regime: { label: "Regime",         symbol: "rect",    cssVar: "--regime", note: "days in unusual periods" },
+    both:   { label: "Shock + regime", symbol: "diamond", cssVar: "--both",   note: "both at once" },
+  };
+  const TYPE_ORDER = ["shock", "regime", "both"];
+
+  const SOURCE_LABELS = { sebi: "SEBI", business_standard: "Business Standard", wikipedia: "Wikipedia" };
+  const EXPLANATION_FIELDS = ["Likely Cause", "Supporting Evidence", "Confidence", "Caveats"];
+  const CONFIDENCE_LEVELS = { low: 1, medium: 2, high: 3 };
+  const RANGE_MONTHS = { "6M": 6, "1Y": 12, "3Y": 36, "5Y": 60 };
+  const CLICK_TOLERANCE_PX = 12;
+
+  const state = {
+    data: null,
+    prices: [],            // [[timestamp, close], ...]
+    anomalies: [],         // sorted ascending by date
+    byDate: new Map(),
+    returnByDate: new Map(),
+    firstT: 0,
+    lastT: 0,
+    range: { from: 0, to: 0 },
+    rangeKey: "ALL",
+    types: new Set(TYPE_ORDER),
+    explainedOnly: false,
+    selected: null,        // date string
+    chart: null,
+    colors: null,
+    applyingRange: false,
+  };
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+  const $ = (id) => document.getElementById(id);
+
+  function el(tag, attrs = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") node.className = v;
+      else if (k === "text") node.textContent = v;
+      else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+      else node.setAttribute(k, v === true ? "" : v);
+    }
+    for (const c of children.flat()) {
+      if (c === null || c === undefined || c === false) continue;
+      node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    }
+    return node;
+  }
+
+  function svg(tag, attrs = {}) {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    return node;
+  }
+
+  function typeMark(type, size = 10) {
+    const root = svg("svg", { width: size, height: size, viewBox: "0 0 10 10", class: "type-mark", "aria-hidden": "true" });
+    const style = `fill: var(${TYPES[type].cssVar})`;
+    if (type === "shock") root.append(svg("circle", { cx: 5, cy: 5, r: 4.5, style }));
+    else if (type === "regime") root.append(svg("rect", { x: 0.75, y: 0.75, width: 8.5, height: 8.5, rx: 1, style }));
+    else root.append(svg("polygon", { points: "5,0 10,5 5,10 0,5", style }));
+    return root;
+  }
+
+  const ts = (iso) => Date.parse(iso + "T00:00:00Z");
+  const isoFromTs = (t) => new Date(t).toISOString().slice(0, 10);
+
+  const fmtShort = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const fmtLong = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  const fmtWeekday = new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" });
+  const fmtPrice = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtInt = new Intl.NumberFormat("en-IN");
+
+  const shortDate = (iso) => fmtShort.format(ts(iso));
+  const longDate = (iso) => fmtLong.format(ts(iso));
+  const MINUS = "−";
+  const signed = (x, digits = 2) => (x > 0 ? "+" : x < 0 ? MINUS : "") + Math.abs(x).toFixed(digits);
+  const pct = (x, digits = 2) => signed(x * 100, digits) + "%";
+  const simpleReturn = (logReturn) => Math.exp(logReturn) - 1;
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function readColors() {
+    const c = {};
+    for (const name of ["ink", "ink-2", "muted", "grid", "axis", "border", "surface", "accent", "price", "band", "shock", "regime", "both"]) {
+      c[name.replace("-", "")] = cssVar("--" + name);
+    }
+    return c;
+  }
+
+  function safeUrl(url) {
+    return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Data selection
+  // ---------------------------------------------------------------------------
+  function hasExplanation(a) {
+    return Boolean(a.explanation_date && state.data.explanations[a.explanation_date]);
+  }
+
+  function passesFilters(a) {
+    return state.types.has(a.anomaly_type) && (!state.explainedOnly || hasExplanation(a));
+  }
+
+  function inRange(t) {
+    return t >= state.range.from && t <= state.range.to;
+  }
+
+  /** Anomalies passing the type/explanation filters (all dates). */
+  const filtered = () => state.anomalies.filter(passesFilters);
+
+  /** Anomalies passing all filters, including the visible date range. */
+  const visible = () => state.anomalies.filter((a) => passesFilters(a) && inRange(a.t));
+
+  // ---------------------------------------------------------------------------
+  // Masthead, legend, filters
+  // ---------------------------------------------------------------------------
+  function renderProvenance() {
+    const d = state.data;
+    const rows = [
+      ["Index", d.sector === "NIFTY50" ? "NIFTY 50" : d.sector],
+      ["Data through", longDate(d.prices.date[d.prices.date.length - 1])],
+      ["Trading days", fmtInt.format(d.prices.date.length)],
+      ["Data exported", longDate(d.generated_at.slice(0, 10))],
+    ];
+    $("provenance").replaceChildren(...rows.flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })]));
+  }
+
+  function renderLegend() {
+    const priceKey = svg("svg", { width: 16, height: 10, "aria-hidden": "true", class: "type-mark" });
+    priceKey.append(svg("line", { x1: 0, y1: 5, x2: 16, y2: 5, style: "stroke: var(--price); stroke-width: 2" }));
+    const bandKey = svg("svg", { width: 14, height: 10, "aria-hidden": "true", class: "type-mark" });
+    bandKey.append(svg("rect", { x: 0, y: 0, width: 14, height: 10, rx: 1, style: "fill: var(--band); stroke: var(--regime); stroke-opacity: 0.4" }));
+
+    $("legend").replaceChildren(
+      el("li", {}, priceKey, "Closing price"),
+      ...TYPE_ORDER.map((t) => el("li", {}, typeMark(t), TYPES[t].label)),
+      el("li", {}, bandKey, "Regime episode"),
+    );
+  }
+
+  function renderTypeFilters() {
+    $("type-filters").replaceChildren(...TYPE_ORDER.map((t) =>
+      el("button", {
+        type: "button",
+        class: "chip",
+        "aria-pressed": String(state.types.has(t)),
+        onclick: () => {
+          if (state.types.has(t)) state.types.delete(t); else state.types.add(t);
+          renderTypeFilters();
+          refresh();
+        },
+      }, typeMark(t), TYPES[t].label)
+    ));
+  }
+
+  function setRangeButtons(key) {
+    for (const b of $("range-buttons").querySelectorAll("button")) {
+      b.setAttribute("aria-pressed", String(b.dataset.range === key));
+    }
+  }
+
+  function rangeFor(key) {
+    if (key === "ALL" || !RANGE_MONTHS[key]) return { from: state.firstT, to: state.lastT };
+    const d = new Date(state.lastT);
+    d.setUTCMonth(d.getUTCMonth() - RANGE_MONTHS[key]);
+    return { from: Math.max(state.firstT, d.getTime()), to: state.lastT };
+  }
+
+  function applyRange(key) {
+    state.rangeKey = key;
+    state.range = rangeFor(key);
+    setRangeButtons(key);
+    state.applyingRange = true;
+    state.chart.dispatchAction({ type: "dataZoom", startValue: state.range.from, endValue: state.range.to });
+    state.applyingRange = false;
+    renderStats();
+    renderTable();
+    renderDetail();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stat tiles
+  // ---------------------------------------------------------------------------
+  function renderStats() {
+    const days = state.prices.filter(([t]) => inRange(t)).length;
+    const v = visible();
+    const count = (type) => v.filter((a) => a.anomaly_type === type).length;
+    const explained = v.filter(hasExplanation).length;
+    const from = isoFromTs(Math.max(state.range.from, state.firstT));
+    const to = isoFromTs(Math.min(state.range.to, state.lastT));
+
+    const tile = (label, value, sub, type) => el("div", { class: "stat" },
+      el("div", { class: "stat-label" }, type ? typeMark(type) : null, label),
+      el("div", { class: "stat-value", text: value }),
+      el("div", { class: "stat-sub", text: sub }),
+    );
+
+    $("stats").replaceChildren(
+      tile("Trading days", fmtInt.format(days), `${shortDate(from)} – ${shortDate(to)}`),
+      tile("Flagged days", fmtInt.format(v.length), days ? `${((v.length / days) * 100).toFixed(1)}% of trading days` : "—"),
+      ...TYPE_ORDER.map((t) => tile(TYPES[t].label, fmtInt.format(count(t)), TYPES[t].note, t)),
+      tile("Explained", `${fmtInt.format(explained)} / ${fmtInt.format(v.length)}`, "with a generated explanation"),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Table
+  // ---------------------------------------------------------------------------
+  function explanationStatus(a) {
+    if (hasExplanation(a)) return { text: "Available", cls: "status-yes" };
+    if (a.date < state.data.explain_from) return { text: "Not in scope", cls: "status-no" };
+    return { text: "Pending", cls: "status-no" };
+  }
+
+  function agreementText(a) {
+    const n = state.data.ensemble_size;
+    if (a.anomaly_type === "shock") return `${a.shock_votes}/${n}`;
+    if (a.anomaly_type === "regime") return `${a.regime_votes}/${n}`;
+    return `${a.shock_votes}/${n} · ${a.regime_votes}/${n}`;
+  }
+
+  function renderTable() {
+    const rows = visible().slice().reverse();
+    $("table-note").textContent = rows.length
+      ? `${fmtInt.format(rows.length)} days in the selected period, newest first. Agreement is the number of models (of ${state.data.ensemble_size}) that individually flagged the day.`
+      : "No flagged days match the current filters.";
+
+    if (!rows.length) {
+      $("anomaly-rows").replaceChildren(el("tr", { class: "empty-row" }, el("td", { colspan: 7, text: "No flagged days in this period." })));
+      return;
+    }
+
+    $("anomaly-rows").replaceChildren(...rows.map((a) => {
+      const status = explanationStatus(a);
+      const select = () => selectDay(a.date, { scrollRow: false });
+      return el("tr", {
+        tabindex: "0",
+        "data-date": a.date,
+        "aria-selected": String(a.date === state.selected),
+        onclick: select,
+        onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); } },
+      },
+        el("td", { text: shortDate(a.date) }),
+        el("td", {}, el("span", { class: "type-cell" }, typeMark(a.anomaly_type), TYPES[a.anomaly_type].label)),
+        el("td", { class: "num", text: fmtPrice.format(a.close) }),
+        el("td", { class: "num", text: pct(simpleReturn(a.log_return)) }),
+        el("td", { class: "num", text: signed(a.return_zscore) }),
+        el("td", { class: "num", text: agreementText(a) }),
+        el("td", { class: status.cls, text: status.text }),
+      );
+    }));
+  }
+
+  function syncTableSelection(scroll) {
+    for (const tr of $("anomaly-rows").querySelectorAll("tr[data-date]")) {
+      const on = tr.dataset.date === state.selected;
+      tr.setAttribute("aria-selected", String(on));
+      if (on && scroll) scrollRowIntoTable(tr);
+    }
+  }
+
+  /** Scroll only the table's own container -- scrollIntoView would also move the page. */
+  function scrollRowIntoTable(tr) {
+    const wrap = tr.closest(".table-wrap");
+    const header = wrap.querySelector("thead").offsetHeight;
+    const top = tr.offsetTop - header;
+    const bottom = tr.offsetTop + tr.offsetHeight;
+    if (top < wrap.scrollTop) wrap.scrollTop = top;
+    else if (bottom > wrap.scrollTop + wrap.clientHeight) wrap.scrollTop = bottom - wrap.clientHeight;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Detail panel
+  // ---------------------------------------------------------------------------
+  function parseExplanation(text) {
+    const pattern = new RegExp(`\\*\\*\\s*(${EXPLANATION_FIELDS.join("|")})\\s*:?\\s*\\*\\*\\s*:?`, "gi");
+    const matches = [...text.matchAll(pattern)];
+    if (!matches.length) return null;
+    return matches.map((m, i) => {
+      const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+      const label = EXPLANATION_FIELDS.find((f) => f.toLowerCase() === m[1].toLowerCase()) || m[1];
+      return { label, body: text.slice(m.index + m[0].length, end).replace(/\*\*/g, "").trim() };
+    });
+  }
+
+  function confidenceNode(body) {
+    const m = body.match(/^(high|medium|low)\b[\s.,:;—-]*/i);
+    if (!m) return el("dd", { text: body });
+    const level = CONFIDENCE_LEVELS[m[1].toLowerCase()];
+    const meter = el("span", { class: "confidence-meter", "aria-hidden": "true" },
+      [1, 2, 3].map((i) => el("i", { class: i <= level ? "on" : "" })));
+    const rest = body.slice(m[0].length).trim();
+    return el("dd", {},
+      el("span", { class: "confidence" }, meter, m[1][0].toUpperCase() + m[1].slice(1).toLowerCase()),
+      rest ? el("div", { text: rest }) : null,
+    );
+  }
+
+  function explanationBody(text) {
+    const sections = parseExplanation(text);
+    if (!sections) return el("p", { class: "plain", text: text.replace(/\*\*/g, "") });
+    return el("dl", {}, sections.flatMap((s) => [
+      el("dt", { text: s.label }),
+      s.label === "Confidence" ? confidenceNode(s.body) : el("dd", { text: s.body }),
+    ]));
+  }
+
+  function sourcesSection(exp) {
+    const items = (exp.context || []).filter((c) => c && (c.title || c.url));
+    const loneUrls = items.some((c) => c.url) ? [] : (exp.urls || []).map(safeUrl).filter(Boolean);
+    if (!items.length && !loneUrls.length) return null;
+
+    const list = el("ul", { class: "sources" },
+      items.map((c) => {
+        const meta = [SOURCE_LABELS[c.source] || c.source, c.date && /^\d{4}-\d{2}-\d{2}$/.test(c.date) ? shortDate(c.date) : c.date]
+          .filter(Boolean).join(" · ");
+        const href = safeUrl(c.url);
+        const title = c.title || href;
+        return el("li", {},
+          meta ? el("span", { class: "source-meta", text: meta }) : null,
+          href ? el("a", { href, target: "_blank", rel: "noopener noreferrer", text: title }) : el("span", { text: title }),
+        );
+      }),
+      loneUrls.map((href) => el("li", {}, el("a", { href, target: "_blank", rel: "noopener noreferrer", text: href }))),
+    );
+    return el("section", { class: "detail-section" }, el("h3", { text: "Retrieved sources" }), list);
+  }
+
+  function pips(n, total) {
+    return el("span", { class: "agreement", "aria-hidden": "true" },
+      Array.from({ length: total }, (_, i) => el("i", { class: i < n ? "on" : "" })));
+  }
+
+  function metric(label, value, { wide = false, sub = null, extra = null } = {}) {
+    return el("div", { class: wide ? "wide" : null },
+      el("dt", { text: label }),
+      el("dd", {}, value, extra, sub ? el("span", { class: "sub", text: sub }) : null),
+    );
+  }
+
+  function neighbours() {
+    const list = visible();
+    const sel = state.selected;
+    const prev = [...list].reverse().find((a) => a.date < sel) || null;
+    const next = list.find((a) => a.date > sel) || null;
+    const pos = list.findIndex((a) => a.date === sel);
+    return { prev, next, pos, total: list.length };
+  }
+
+  function renderDetail() {
+    const panel = $("detail");
+    const a = state.selected && state.byDate.get(state.selected);
+    if (!a) {
+      panel.replaceChildren(el("p", { class: "detail-empty", text: "Select a flagged day on the chart or in the table to see its explanation." }));
+      return;
+    }
+
+    const n = state.data.ensemble_size;
+    const { prev, next, pos, total } = neighbours();
+
+    const head = el("div", { class: "detail-head" },
+      el("div", { class: "detail-nav" },
+        el("span", { text: pos >= 0 ? `Flagged day ${pos + 1} of ${total} in view` : "Outside the current view" }),
+        el("span", { class: "nav-buttons" },
+          el("button", { type: "button", disabled: !prev, title: "Previous flagged day (←)", onclick: () => prev && selectDay(prev.date, { scrollRow: true }) }, "‹ Previous"),
+          el("button", { type: "button", disabled: !next, title: "Next flagged day (→)", onclick: () => next && selectDay(next.date, { scrollRow: true }) }, "Next ›"),
+        ),
+      ),
+      el("div", { class: "detail-date", text: longDate(a.date) }),
+      el("div", { class: "detail-weekday", text: fmtWeekday.format(a.t) }),
+      el("div", { class: "detail-badges" },
+        el("span", { class: "badge" }, typeMark(a.anomaly_type), TYPES[a.anomaly_type].label + " anomaly"),
+        a.near_rebalancing ? el("span", { class: "badge", text: "Near index rebalancing" }) : null,
+      ),
+      a.event ? el("div", { class: "event-note" },
+        el("strong", { text: a.event.event }),
+        a.event.notes ? el("span", { text: a.event.notes }) : null,
+      ) : null,
+    );
+
+    const episodeDays = a.regime_episode_start
+      ? state.anomalies.filter((x) => x.regime_episode_start === a.regime_episode_start).length
+      : 0;
+
+    const market = el("section", { class: "detail-section" },
+      el("h3", { text: "Market data" }),
+      el("dl", { class: "metrics" },
+        metric("Close", fmtPrice.format(a.close)),
+        metric("Daily return", pct(simpleReturn(a.log_return))),
+        metric("Return z-score", signed(a.return_zscore), { sub: "vs. 20-day mean" }),
+        metric("60-day return", pct(a.return_60d)),
+        metric("Shock models", `${a.shock_votes} of ${n}`, { extra: pips(a.shock_votes, n) }),
+        metric("Regime models", `${a.regime_votes} of ${n}`, { extra: pips(a.regime_votes, n) }),
+        a.regime_episode_start ? metric("Regime episode",
+          a.regime_episode_start === a.regime_episode_end
+            ? shortDate(a.regime_episode_start)
+            : `${shortDate(a.regime_episode_start)} – ${shortDate(a.regime_episode_end)}`,
+          { wide: true, sub: `${episodeDays} flagged ${episodeDays === 1 ? "day" : "days"} in this episode` }) : null,
+        a.near_rebalancing && a.rebalancing_notes ? metric("Rebalancing", "", { wide: true, sub: a.rebalancing_notes }) : null,
+      ),
+    );
+
+    const exp = hasExplanation(a) ? state.data.explanations[a.explanation_date] : null;
+    let explanation;
+    if (exp) {
+      explanation = el("section", { class: "detail-section explanation" },
+        el("h3", { text: "Explanation" }),
+        a.explanation_date !== a.date ? el("p", { class: "callout shared-note",
+          text: `This regime day shares the explanation generated for ${longDate(a.explanation_date)}, the strongest day of the same episode.` }) : null,
+        explanationBody(exp.explanation || ""),
+      );
+    } else if (a.date < state.data.explain_from) {
+      explanation = el("section", { class: "detail-section" },
+        el("h3", { text: "Explanation" }),
+        el("p", { class: "callout" },
+          `Explanations are generated for anomalies from ${longDate(state.data.explain_from)} onward, so this day has none. `,
+          "To include it, lower ", el("code", { text: "MIN_ANOMALY_DATE" }), " in ", el("code", { text: "explain_anomalies.py" }), "."),
+      );
+    } else {
+      explanation = el("section", { class: "detail-section" },
+        el("h3", { text: "Explanation" }),
+        el("p", { class: "callout" },
+          "No explanation has been generated for this day yet. Run ",
+          el("code", { text: "rag/explain_anomalies.py" }), ", then ", el("code", { text: "export_frontend_data.py" }),
+          ", and reload this page."),
+      );
+    }
+
+    panel.replaceChildren(...[head, market, explanation, exp && sourcesSection(exp)].filter(Boolean));
+    panel.scrollTop = 0;
+  }
+
+  function selectDay(date, { scrollRow = true } = {}) {
+    state.selected = date;
+    renderDetail();
+    syncTableSelection(scrollRow);
+    updateSelectedMarker();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chart
+  // ---------------------------------------------------------------------------
+  function markerData(type) {
+    return state.anomalies
+      .filter((a) => a.anomaly_type === type && passesFilters(a))
+      .map((a) => [a.t, a.close, a.date]);
+  }
+
+  function selectedData() {
+    const a = state.selected && state.byDate.get(state.selected);
+    return a ? [[a.t, a.close, a.date]] : [];
+  }
+
+  function tooltip(params) {
+    const c = state.colors;
+    const p = params.find((x) => x.seriesId === "price") || params[0];
+    if (!p) return "";
+    const date = isoFromTs(p.value[0]);
+    const close = p.value[1];
+    const lr = state.returnByDate.get(date);
+    const a = state.byDate.get(date);
+    const visibleAnomaly = a && passesFilters(a);
+
+    let html =
+      `<div style="font-size:11px;color:${c.muted};margin-bottom:2px">${shortDate(date)}</div>` +
+      `<div><strong style="font-size:14px;color:${c.ink}">${fmtPrice.format(close)}</strong>` +
+      ` <span style="color:${c.ink2}">close</span></div>`;
+    if (lr !== undefined) {
+      html += `<div><strong style="color:${c.ink}">${pct(simpleReturn(lr))}</strong> <span style="color:${c.ink2}">daily return</span></div>`;
+    }
+    if (visibleAnomaly) {
+      const color = c[a.anomaly_type];
+      html += `<div style="margin-top:6px;display:flex;align-items:center;gap:6px;color:${c.ink}">` +
+        `<span style="display:inline-block;width:12px;height:2px;background:${color}"></span>` +
+        `${TYPES[a.anomaly_type].label} anomaly</div>` +
+        `<div style="font-size:11px;color:${c.muted}">Click for details</div>`;
+    }
+    return html;
+  }
+
+  function buildOption() {
+    const c = (state.colors = readColors());
+    const episodes = state.data.episodes.map((e) => [
+      { xAxis: ts(e.start) - 0.5 * 86400000 },
+      { xAxis: ts(e.end) + 0.5 * 86400000 },
+    ]);
+
+    return {
+      animation: false,
+      textStyle: { fontFamily: cssVar("--font") },
+      grid: { left: 8, right: 16, top: 12, bottom: 64, containLabel: true },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "line", lineStyle: { color: c.muted, width: 1 } },
+        backgroundColor: c.surface,
+        borderColor: c.border,
+        borderWidth: 1,
+        padding: [8, 10],
+        textStyle: { color: c.ink, fontSize: 12 },
+        extraCssText: "box-shadow: 0 4px 16px rgba(0,0,0,0.12); border-radius: 6px;",
+        formatter: tooltip,
+      },
+      xAxis: {
+        type: "time",
+        axisLine: { lineStyle: { color: c.axis } },
+        axisTick: { show: false },
+        axisLabel: { color: c.muted, fontSize: 11, hideOverlap: true },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: "value",
+        scale: true,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { color: c.muted, fontSize: 11, formatter: (v) => fmtInt.format(v) },
+        splitLine: { lineStyle: { color: c.grid, width: 1 } },
+      },
+      dataZoom: [
+        {
+          type: "inside", xAxisIndex: 0, filterMode: "filter",
+          zoomOnMouseWheel: "ctrl", moveOnMouseWheel: false, moveOnMouseMove: true,
+          startValue: state.range.from, endValue: state.range.to,
+        },
+        {
+          type: "slider", xAxisIndex: 0, filterMode: "filter", height: 26, bottom: 14,
+          startValue: state.range.from, endValue: state.range.to,
+          borderColor: c.border, backgroundColor: "transparent", fillerColor: c.band,
+          handleStyle: { color: c.surface, borderColor: c.muted },
+          moveHandleStyle: { color: c.axis },
+          emphasis: { handleStyle: { borderColor: c.accent }, moveHandleStyle: { color: c.accent } },
+          dataBackground: { lineStyle: { color: c.axis, width: 1 }, areaStyle: { color: c.grid, opacity: 0.6 } },
+          selectedDataBackground: { lineStyle: { color: c.price, width: 1 }, areaStyle: { color: c.band, opacity: 1 } },
+          textStyle: { color: c.muted, fontSize: 11 },
+          labelFormatter: (v) => shortDate(isoFromTs(v)),
+          brushSelect: false,
+        },
+      ],
+      series: [
+        {
+          id: "price", name: "Close", type: "line", data: state.prices,
+          showSymbol: false, symbol: "none", sampling: "lttb",
+          lineStyle: { width: 1.5, color: c.price }, itemStyle: { color: c.price },
+          emphasis: { disabled: true }, z: 2,
+          markArea: { silent: true, itemStyle: { color: c.band }, data: episodes },
+        },
+        ...TYPE_ORDER.map((t) => ({
+          id: t, name: TYPES[t].label, type: "scatter", data: markerData(t),
+          symbol: TYPES[t].symbol, symbolSize: t === "regime" ? 8 : 9,
+          itemStyle: { color: c[t], borderColor: c.surface, borderWidth: 1.5 },
+          emphasis: { scale: 1.4 }, cursor: "pointer", z: 3,
+        })),
+        {
+          id: "selected", type: "scatter", data: selectedData(), silent: true,
+          symbol: "circle", symbolSize: 20, z: 4,
+          itemStyle: { color: "transparent", borderColor: c.ink, borderWidth: 2 },
+          tooltip: { show: false },
+        },
+      ],
+    };
+  }
+
+  function nearestAnomaly(x, y) {
+    const chart = state.chart;
+    if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null;
+    let best = null;
+    let bestScore = Infinity;
+    for (const a of state.anomalies) {
+      if (!passesFilters(a) || !inRange(a.t)) continue;
+      const [px, py] = chart.convertToPixel({ seriesId: "price" }, [a.t, a.close]);
+      const dx = Math.abs(px - x);
+      if (dx > CLICK_TOLERANCE_PX) continue;
+      // Horizontal distance decides (it matches the crosshair); vertical only breaks ties.
+      const score = dx + Math.abs(py - y) * 0.01;
+      if (score < bestScore) { bestScore = score; best = a; }
+    }
+    return best;
+  }
+
+  function onDataZoom() {
+    if (state.applyingRange) return;
+    const dz = state.chart.getOption().dataZoom[0];
+    let { startValue: from, endValue: to } = dz;
+    if (typeof from !== "number" || typeof to !== "number") {
+      const span = state.lastT - state.firstT;
+      from = state.firstT + (span * dz.start) / 100;
+      to = state.firstT + (span * dz.end) / 100;
+    }
+    state.range = { from, to };
+    state.rangeKey = null;
+    setRangeButtons(null);
+    renderStats();
+    renderTable();
+    renderDetail();
+  }
+
+  function initChart() {
+    const chart = (state.chart = echarts.init($("chart"), null, { renderer: "canvas" }));
+    chart.setOption(buildOption());
+
+    chart.on("datazoom", onDataZoom);
+    const zr = chart.getZr();
+    zr.on("click", (e) => {
+      const a = nearestAnomaly(e.offsetX, e.offsetY);
+      if (a) selectDay(a.date, { scrollRow: true });
+    });
+    zr.on("mousemove", (e) => {
+      zr.setCursorStyle(nearestAnomaly(e.offsetX, e.offsetY) ? "pointer" : "default");
+    });
+
+    new ResizeObserver(() => chart.resize()).observe($("chart"));
+
+    const dark = window.matchMedia("(prefers-color-scheme: dark)");
+    dark.addEventListener("change", () => chart.setOption(buildOption(), { notMerge: true }));
+  }
+
+  function updateMarkers() {
+    state.chart.setOption({
+      series: [...TYPE_ORDER.map((t) => ({ id: t, data: markerData(t) })), { id: "selected", data: selectedData() }],
+    });
+  }
+
+  function updateSelectedMarker() {
+    state.chart.setOption({ series: [{ id: "selected", data: selectedData() }] });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wiring
+  // ---------------------------------------------------------------------------
+  function refresh() {
+    updateMarkers();
+    renderStats();
+    renderTable();
+    renderDetail();
+  }
+
+  function renderFooter() {
+    const d = state.data;
+    $("footer").textContent =
+      `Data exported ${longDate(d.generated_at.slice(0, 10))}. Flagging threshold: top ${Math.round(d.contamination * 100)}% of ensemble scores per feature set. ` +
+      "Explanations are machine-generated from retrieved documents and are not investment advice.";
+  }
+
+  function bindControls() {
+    for (const b of $("range-buttons").querySelectorAll("button")) {
+      b.addEventListener("click", () => applyRange(b.dataset.range));
+    }
+    $("explained-only").addEventListener("change", (e) => {
+      state.explainedOnly = e.target.checked;
+      refresh();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.target.closest("input, textarea, select") || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" || !state.selected) return;
+      const { prev, next } = neighbours();
+      const target = e.key === "ArrowLeft" ? prev : next;
+      if (target) { e.preventDefault(); selectDay(target.date, { scrollRow: true }); }
+    });
+  }
+
+  function prepare(data) {
+    state.data = data;
+    const { date, close, log_return } = data.prices;
+    state.prices = date.map((d, i) => [ts(d), close[i]]);
+    date.forEach((d, i) => state.returnByDate.set(d, log_return[i]));
+    state.firstT = state.prices[0][0];
+    state.lastT = state.prices[state.prices.length - 1][0];
+    state.range = rangeFor("ALL");
+
+    state.anomalies = data.anomalies
+      .map((a) => ({ ...a, t: ts(a.date) }))
+      .sort((x, y) => x.t - y.t);
+    for (const a of state.anomalies) state.byDate.set(a.date, a);
+
+    const explained = state.anomalies.filter(hasExplanation);
+    const initial = explained[explained.length - 1] || state.anomalies[state.anomalies.length - 1];
+    state.selected = initial ? initial.date : null;
+  }
+
+  function showError(message) {
+    const box = el("div", { class: "load-error" },
+      el("strong", { text: "The dashboard could not load its data." }),
+      el("p", { text: message }),
+      el("p", {}, "Generate it with ", el("code", { text: "python backend/src/export_frontend_data.py" }),
+        " and serve this folder over HTTP, for example ", el("code", { text: "python -m http.server 8000" }),
+        " from inside ", el("code", { text: "frontend/" }), "."),
+    );
+    document.querySelector(".layout").replaceWith(box);
+  }
+
+  async function main() {
+    if (typeof echarts === "undefined") {
+      showError("The charting library (ECharts) failed to load. Check your internet connection.");
+      return;
+    }
+    let data;
+    try {
+      const res = await fetch(DATA_URL, { cache: "no-cache" });
+      if (!res.ok) throw new Error(`${DATA_URL} returned HTTP ${res.status}.`);
+      data = await res.json();
+    } catch (err) {
+      showError(err.message || String(err));
+      return;
+    }
+
+    prepare(data);
+    renderProvenance();
+    renderLegend();
+    renderTypeFilters();
+    renderFooter();
+    bindControls();
+    initChart();
+    renderStats();
+    renderTable();
+    renderDetail();
+    syncTableSelection(true);
+  }
+
+  main();
+})();
